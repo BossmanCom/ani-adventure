@@ -47,15 +47,12 @@
     let frameW = 512;
     let frameH = 512;
 
-    // Frame indexes
     const IDLE_FRAME = 2;
     const WALK_FRAMES = [0, 3];
 
-    // Offscreen canvas for chroma-key (removes white)
     const off = document.createElement('canvas');
     const offCtx = off.getContext('2d');
 
-    // ===== CHARACTER STATE =====
     const ani = {
       x: 270,
       y: 180,
@@ -74,7 +71,6 @@
       frameH = sheet.height / 2;
       off.width = frameW;
       off.height = frameH;
-      console.log('Sheet loaded', frameW, frameH);
       requestAnimationFrame(loop);
     };
 
@@ -86,7 +82,6 @@
       ctx.fillText('Could not load ani_sheet.png', 180, 230);
     };
 
-    // Remove near-white pixels
     function getCleanFrame(frameIndex) {
       const col = frameIndex % 2;
       const row = Math.floor(frameIndex / 2);
@@ -102,21 +97,14 @@
       const data = imgData.data;
 
       for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-
-        // If pixel is close to white, make it transparent
-        if (r > 230 && g > 230 && b > 230) {
-          data[i + 3] = 0;
-        }
+        const r = data[i], g = data[i+1], b = data[i+2];
+        if (r > 230 && g > 230 && b > 230) data[i+3] = 0;
       }
 
       offCtx.putImageData(imgData, 0, 0);
       return off;
     }
 
-    // ===== CLICK TO MOVE =====
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -128,11 +116,10 @@
       ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.7, 40), 220);
     });
 
-    // ===== UPDATE =====
     function update() {
       const dx = ani.targetX - ani.x;
       const dy = ani.targetY - ani.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = Math.sqrt(dx*dx + dy*dy);
 
       if (dist > 3) {
         ani.isMoving = true;
@@ -155,7 +142,80 @@
       }
     }
 
-    // ===== DRAW =====
+    // ===== FURNITURE =====
+    function drawBed() {
+      // Bed frame
+      ctx.fillStyle = '#6b3e26';
+      ctx.fillRect(40, 210, 180, 70);          // mattress base
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(40, 200, 180, 18);          // top rail
+
+      // Pillow
+      ctx.fillStyle = '#e8d5b7';
+      ctx.fillRect(50, 205, 50, 22);
+
+      // Blanket
+      ctx.fillStyle = '#c45c26';
+      ctx.fillRect(100, 215, 110, 50);
+      ctx.fillStyle = '#a3481e';
+      ctx.fillRect(100, 215, 110, 8);          // fold line
+
+      // Legs
+      ctx.fillStyle = '#4a2c17';
+      ctx.fillRect(45, 275, 12, 18);
+      ctx.fillRect(200, 275, 12, 18);
+    }
+
+    function drawDresser() {
+      // Main body
+      ctx.fillStyle = '#5c4033';
+      ctx.fillRect(480, 160, 120, 130);
+
+      // Top
+      ctx.fillStyle = '#6b4a38';
+      ctx.fillRect(475, 155, 130, 12);
+
+      // Drawers
+      ctx.fillStyle = '#4a3328';
+      ctx.fillRect(490, 180, 100, 28);
+      ctx.fillRect(490, 220, 100, 28);
+      ctx.fillRect(490, 260, 100, 22);
+
+      // Handles
+      ctx.fillStyle = '#c9a227';
+      ctx.fillRect(530, 190, 20, 6);
+      ctx.fillRect(530, 230, 20, 6);
+      ctx.fillRect(530, 268, 20, 6);
+    }
+
+    function drawPlant() {
+      // Pot
+      ctx.fillStyle = '#8b4513';
+      ctx.beginPath();
+      ctx.moveTo(300, 250);
+      ctx.lineTo(320, 250);
+      ctx.lineTo(315, 280);
+      ctx.lineTo(305, 280);
+      ctx.closePath();
+      ctx.fill();
+
+      // Dirt
+      ctx.fillStyle = '#3d2914';
+      ctx.fillRect(304, 248, 12, 6);
+
+      // Leaves
+      ctx.fillStyle = '#2e8b57';
+      ctx.beginPath();
+      ctx.ellipse(310, 230, 18, 22, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(298, 235, 12, 16, -0.4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(322, 235, 12, 16, 0.4, 0, Math.PI*2);
+      ctx.fill();
+    }
+
     function draw() {
       // Room
       ctx.fillStyle = '#3d2b1f';
@@ -175,6 +235,11 @@
         ctx.stroke();
       }
 
+      // Furniture (drawn before Ani so she appears in front)
+      drawBed();
+      drawDresser();
+      drawPlant();
+
       const drawW = frameW * ani.scale;
       const drawH = frameH * ani.scale;
 
@@ -184,7 +249,7 @@
       ctx.ellipse(ani.x + drawW / 2, ani.y + drawH - 8, drawW * 0.32, 11, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw Ani with white removed
+      // Ani
       if (sheet.complete && sheet.naturalWidth > 0) {
         const clean = getCleanFrame(ani.frame);
 
@@ -200,7 +265,6 @@
       }
     }
 
-    // ===== LOOP =====
     function loop() {
       update();
       draw();

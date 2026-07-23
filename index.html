@@ -34,72 +34,59 @@
 </head>
 <body>
   <canvas id="gameCanvas" width="640" height="480"></canvas>
-  <div class="info">Ani Adventure - Starter Scene</div>
+  <div class="info">Ani Adventure - Click to move</div>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Temporary direct raw URL so it definitely loads
-    const ani = new Image();
-    ani.crossOrigin = 'anonymous';
-    ani.src = 'https://raw.githubusercontent.com/BossmanCom/ani-adventure/main/ani.png';
+    // ===== SPRITESHEET (2x2) =====
+    // Layout:
+    // [0] walk A     [1] run/dynamic
+    // [2] idle       [3] walk B
+    const sheet = new Image();
+    sheet.src = 'ani_sheet.png';
 
-    let aniX = 220;
-    let aniY = 80;
-    let aniScale = 0.42;
+    const FRAME_W = 512;   // will be recalculated on load
+    const FRAME_H = 512;
+    let frameW = 512;
+    let frameH = 512;
 
-    ani.onload = () => {
-      console.log('Ani loaded successfully');
-      draw();
+    // Frame indexes for animations
+    const IDLE_FRAME = 2;
+    const WALK_FRAMES = [0, 3];   // the two walking poses
+
+    // ===== CHARACTER STATE =====
+    const ani = {
+      x: 270,
+      y: 180,
+      targetX: 270,
+      targetY: 180,
+      speed: 2.8,
+      facing: 1,          // 1 = right, -1 = left
+      frame: IDLE_FRAME,
+      animTimer: 0,
+      isMoving: false,
+      scale: 0.38
     };
 
-    ani.onerror = (e) => {
-      console.error('Failed to load Ani', e);
+    sheet.onload = () => {
+      // Assume roughly 2x2 equal frames
+      frameW = sheet.width / 2;
+      frameH = sheet.height / 2;
+      console.log('Sheet loaded', frameW, frameH);
+      requestAnimationFrame(loop);
+    };
+
+    sheet.onerror = () => {
       ctx.fillStyle = '#2a2a3e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ff8800';
-      ctx.font = '18px Courier New';
-      ctx.fillText('Still cannot load ani.png', 190, 220);
-      ctx.font = '13px Courier New';
-      ctx.fillStyle = '#aaa';
-      ctx.fillText('Check browser console (F12) for error', 170, 250);
+      ctx.font = '16px Courier New';
+      ctx.fillText('Could not load ani_sheet.png', 180, 230);
     };
 
-    function draw() {
-      // Simple room background
-      ctx.fillStyle = '#3d2b1f';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Back wall
-      ctx.fillStyle = '#5c4033';
-      ctx.fillRect(0, 0, canvas.width, 280);
-
-      // Floor boards
-      ctx.strokeStyle = '#2a1a10';
-      ctx.lineWidth = 2;
-      for (let y = 280; y < canvas.height; y += 28) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-      }
-
-      // Draw Ani
-      if (ani.complete && ani.naturalWidth > 0) {
-        const w = ani.width * aniScale;
-        const h = ani.height * aniScale;
-        ctx.drawImage(ani, aniX, aniY, w, h);
-
-        // Simple ground shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.beginPath();
-        ctx.ellipse(aniX + w/2, aniY + h - 10, w*0.35, 12, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Click to move
+    // ===== CLICK TO MOVE =====
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -107,10 +94,98 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
-      aniX = mx - 80;
-      aniY = Math.min(Math.max(my - 180, 30), 150);
-      draw();
+      ani.targetX = mx - (frameW * ani.scale) / 2;
+      ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.7, 40), 220);
     });
+
+    // ===== UPDATE =====
+    function update() {
+      const dx = ani.targetX - ani.x;
+      const dy = ani.targetY - ani.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 3) {
+        ani.isMoving = true;
+        ani.x += (dx / dist) * ani.speed;
+        ani.y += (dy / dist) * ani.speed;
+
+        // Face direction
+        if (dx > 0.5) ani.facing = 1;
+        if (dx < -0.5) ani.facing = -1;
+
+        // Walk animation
+        ani.animTimer++;
+        if (ani.animTimer > 12) {
+          ani.animTimer = 0;
+          ani.frame = (ani.frame === WALK_FRAMES[0]) ? WALK_FRAMES[1] : WALK_FRAMES[0];
+        }
+      } else {
+        ani.isMoving = false;
+        ani.frame = IDLE_FRAME;
+        ani.x = ani.targetX;
+        ani.y = ani.targetY;
+      }
+    }
+
+    // ===== DRAW =====
+    function draw() {
+      // Room
+      ctx.fillStyle = '#3d2b1f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Back wall
+      ctx.fillStyle = '#5c4033';
+      ctx.fillRect(0, 0, canvas.width, 260);
+
+      // Floor boards
+      ctx.strokeStyle = '#2a1a10';
+      ctx.lineWidth = 2;
+      for (let y = 260; y < canvas.height; y += 26) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Shadow
+      const drawW = frameW * ani.scale;
+      const drawH = frameH * ani.scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(ani.x + drawW / 2, ani.y + drawH - 8, drawW * 0.32, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw Ani from spritesheet
+      if (sheet.complete && sheet.naturalWidth > 0) {
+        const col = ani.frame % 2;
+        const row = Math.floor(ani.frame / 2);
+
+        ctx.save();
+        if (ani.facing === -1) {
+          ctx.translate(ani.x + drawW, ani.y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(
+            sheet,
+            col * frameW, row * frameH, frameW, frameH,
+            0, 0, drawW, drawH
+          );
+        } else {
+          ctx.drawImage(
+            sheet,
+            col * frameW, row * frameH, frameW, frameH,
+            ani.x, ani.y, drawW, drawH
+          );
+        }
+        ctx.restore();
+      }
+    }
+
+    // ===== LOOP =====
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
   </script>
 </body>
 </html>

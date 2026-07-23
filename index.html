@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ani Adventure</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+      color: #eee;
+    }
+    #gameCanvas {
+      background: #2a2a3e;
+      border: 3px solid #ff8800;
+      image-rendering: pixelated;
+      max-width: 100%;
+    }
+    .info {
+      position: fixed;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 13px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="640" height="480"></canvas>
+  <div class="info">Ani Adventure - Starter Scene</div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Load Ani sprite
+    const ani = new Image();
+    ani.src = 'assets/ani.png';   // Put the transparent PNG here
+
+    let aniX = 220;
+    let aniY = 80;
+    let aniScale = 0.45;
+
+    ani.onload = () => {
+      draw();
+    };
+
+    ani.onerror = () => {
+      // Fallback text if image not found yet
+      ctx.fillStyle = '#2a2a3e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ff8800';
+      ctx.font = '18px Courier New';
+      ctx.fillText('Waiting for assets/ani.png', 180, 220);
+      ctx.font = '14px Courier New';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('Upload the transparent PNG to /assets/ani.png', 140, 250);
+    };
+
+    function draw() {
+      // Simple room background
+      ctx.fillStyle = '#3d2b1f';  // wooden floor tone
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Back wall
+      ctx.fillStyle = '#5c4033';
+      ctx.fillRect(0, 0, canvas.width, 280);
+
+      // Floor boards
+      ctx.strokeStyle = '#2a1a10';
+      ctx.lineWidth = 2;
+      for (let y = 280; y < canvas.height; y += 28) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Draw Ani
+      if (ani.complete && ani.naturalWidth > 0) {
+        const w = ani.width * aniScale;
+        const h = ani.height * aniScale;
+        ctx.drawImage(ani, aniX, aniY, w, h);
+      }
+
+      // Simple ground shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(aniX + 90, aniY + 390, 70, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Click to move (very basic for now)
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      // Keep her roughly on the floor
+      aniX = mx - 90;
+      aniY = Math.min(Math.max(my - 200, 40), 160);
+      draw();
+    });
+  </script>
+</body>
+</html>

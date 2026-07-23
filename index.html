@@ -42,7 +42,7 @@
 
     // Load Ani sprite
     const ani = new Image();
-    ani.src = 'assets/ani.png';   // Put the transparent PNG here
+    ani.src = 'ani.png';
 
     let aniX = 220;
     let aniY = 80;
@@ -53,20 +53,19 @@
     };
 
     ani.onerror = () => {
-      // Fallback text if image not found yet
       ctx.fillStyle = '#2a2a3e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ff8800';
       ctx.font = '18px Courier New';
-      ctx.fillText('Waiting for assets/ani.png', 180, 220);
+      ctx.fillText('Could not load ani.png', 200, 220);
       ctx.font = '14px Courier New';
       ctx.fillStyle = '#aaa';
-      ctx.fillText('Upload the transparent PNG to /assets/ani.png', 140, 250);
+      ctx.fillText('Make sure ani.png is in the root of the repo', 150, 250);
     };
 
     function draw() {
       // Simple room background
-      ctx.fillStyle = '#3d2b1f';  // wooden floor tone
+      ctx.fillStyle = '#3d2b1f';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Back wall
@@ -105,7 +104,6 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
-      // Keep her roughly on the floor
       aniX = mx - 90;
       aniY = Math.min(Math.max(my - 200, 40), 160);
       draw();

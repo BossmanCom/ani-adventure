@@ -40,27 +40,30 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Load Ani sprite
+    // Temporary direct raw URL so it definitely loads
     const ani = new Image();
-    ani.src = 'ani.png';
+    ani.crossOrigin = 'anonymous';
+    ani.src = 'https://raw.githubusercontent.com/BossmanCom/ani-adventure/main/ani.png';
 
     let aniX = 220;
     let aniY = 80;
-    let aniScale = 0.45;
+    let aniScale = 0.42;
 
     ani.onload = () => {
+      console.log('Ani loaded successfully');
       draw();
     };
 
-    ani.onerror = () => {
+    ani.onerror = (e) => {
+      console.error('Failed to load Ani', e);
       ctx.fillStyle = '#2a2a3e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ff8800';
       ctx.font = '18px Courier New';
-      ctx.fillText('Could not load ani.png', 200, 220);
-      ctx.font = '14px Courier New';
+      ctx.fillText('Still cannot load ani.png', 190, 220);
+      ctx.font = '13px Courier New';
       ctx.fillStyle = '#aaa';
-      ctx.fillText('Make sure ani.png is in the root of the repo', 150, 250);
+      ctx.fillText('Check browser console (F12) for error', 170, 250);
     };
 
     function draw() {
@@ -87,16 +90,16 @@
         const w = ani.width * aniScale;
         const h = ani.height * aniScale;
         ctx.drawImage(ani, aniX, aniY, w, h);
-      }
 
-      // Simple ground shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.ellipse(aniX + 90, aniY + 390, 70, 14, 0, 0, Math.PI * 2);
-      ctx.fill();
+        // Simple ground shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(aniX + w/2, aniY + h - 10, w*0.35, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // Click to move (very basic for now)
+    // Click to move
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -104,8 +107,8 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
-      aniX = mx - 90;
-      aniY = Math.min(Math.max(my - 200, 40), 160);
+      aniX = mx - 80;
+      aniY = Math.min(Math.max(my - 180, 30), 150);
       draw();
     });
   </script>

@@ -24,8 +24,7 @@
     .info {
       position: fixed;
       bottom: 12px;
-      left: 0;
-      right: 0;
+      left: 0; right: 0;
       text-align: center;
       font-size: 13px;
       color: #aaa;
@@ -79,8 +78,21 @@
           { x: 55, y: 190, w: 70, h: 90, target: 'hallway', spawnX: 500, spawnY: 160 },
           { x: 195, y: 194, w: 50, h: 70, target: 'weaponStore', spawnX: 120, spawnY: 220 },
           { x: 355, y: 194, w: 50, h: 70, target: 'clothingStore', spawnX: 120, spawnY: 220 },
-          { x: 525, y: 194, w: 50, h: 70, target: 'bar', spawnX: 100, spawnY: 220 }
+          { x: 525, y: 194, w: 50, h: 70, target: 'bar', spawnX: 100, spawnY: 220 },
+          // Right side exit to Garage Street
+          { x: 600, y: 180, w: 40, h: 100, target: 'garageStreet', spawnX: 60, spawnY: 200 }
         ]
+      },
+      garageStreet: {
+        name: 'Garage Street',
+        doors: [
+          { x: 20, y: 180, w: 50, h: 80, target: 'outside', spawnX: 560, spawnY: 200 },
+          { x: 530, y: 184, w: 80, h: 80, target: 'parkingGarage', spawnX: 300, spawnY: 220 }
+        ]
+      },
+      parkingGarage: {
+        name: 'Parking Garage',
+        doors: [{ x: 280, y: 380, w: 80, h: 70, target: 'garageStreet', spawnX: 540, spawnY: 210 }]
       },
       weaponStore: {
         name: 'Weapon Store',
@@ -157,7 +169,7 @@
       }
     }
 
-    // ===== SHARED HELPERS =====
+    // ===== HELPERS =====
     function shadeColor(hex, amt) {
       const num = parseInt(hex.replace('#', ''), 16);
       let r = Math.max(0, Math.min(255, (num >> 16) + amt));
@@ -167,12 +179,9 @@
     }
 
     function drawDoor(x, y, w, h) {
-      ctx.fillStyle = '#3d2914';
-      ctx.fillRect(x-5, y-5, w+10, h+10);
-      ctx.fillStyle = '#8B4513';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#5c3317';
-      ctx.lineWidth = 2;
+      ctx.fillStyle = '#3d2914'; ctx.fillRect(x-5, y-5, w+10, h+10);
+      ctx.fillStyle = '#8B4513'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#5c3317'; ctx.lineWidth = 2;
       ctx.strokeRect(x+8, y+10, w-16, h/2-16);
       ctx.strokeRect(x+8, y+h/2+6, w-16, h/2-18);
       ctx.fillStyle = '#d4af37';
@@ -180,10 +189,8 @@
     }
 
     function drawShopDoor(doorX, doorY, frameColor) {
-      ctx.fillStyle = frameColor;
-      ctx.fillRect(doorX, doorY, 50, 70);
-      ctx.fillStyle = shadeColor(frameColor, -15);
-      ctx.fillRect(doorX+4, doorY+4, 42, 62);
+      ctx.fillStyle = frameColor; ctx.fillRect(doorX, doorY, 50, 70);
+      ctx.fillStyle = shadeColor(frameColor, -15); ctx.fillRect(doorX+4, doorY+4, 42, 62);
       ctx.fillStyle = '#e8d97a';
       ctx.beginPath(); ctx.arc(doorX+38, doorY+35, 3, 0, Math.PI*2); ctx.fill();
     }
@@ -201,16 +208,13 @@
       ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx, cy); ctx.stroke();
       ctx.fillStyle = color;
-      ctx.fillRect(cx-6, cy, 12, 14);
-      ctx.fillRect(cx-10, cy, 4, 8);
-      ctx.fillRect(cx+6, cy, 4, 8);
+      ctx.fillRect(cx-6, cy, 12, 14); ctx.fillRect(cx-10, cy, 4, 8); ctx.fillRect(cx+6, cy, 4, 8);
     }
 
     function drawBarrel(cx, cy) {
       ctx.fillStyle = '#8a6a3a'; ctx.fillRect(cx-10, cy, 20, 22);
       ctx.strokeStyle = '#4a3a2a'; ctx.lineWidth = 2;
-      ctx.strokeRect(cx-10, cy+4, 20, 3);
-      ctx.strokeRect(cx-10, cy+15, 20, 3);
+      ctx.strokeRect(cx-10, cy+4, 20, 3); ctx.strokeRect(cx-10, cy+15, 20, 3);
     }
 
     function drawCounter(x, y, w, h, color) {
@@ -246,8 +250,7 @@
       ctx.beginPath();
       ctx.moveTo(x, y); ctx.lineTo(x, y+90);
       ctx.moveTo(x+w, y); ctx.lineTo(x+w, y+90);
-      ctx.moveTo(x, y); ctx.lineTo(x+w, y);
-      ctx.stroke();
+      ctx.moveTo(x, y); ctx.lineTo(x+w, y); ctx.stroke();
       const colors = ['#d9556b','#5a8fc9','#e8c94a','#7ac98f','#a86bc9'];
       const spacing = w / 6;
       for (let i = 0; i < 6; i++) drawShirt(x + spacing*i + spacing/2, y+6, colors[i%5]);
@@ -261,13 +264,10 @@
 
     function drawBottleShelf(x, y, w) {
       ctx.fillStyle = '#5a3b28';
-      ctx.fillRect(x, y+40, w, 6);
-      ctx.fillRect(x, y+80, w, 6);
+      ctx.fillRect(x, y+40, w, 6); ctx.fillRect(x, y+80, w, 6);
       const colors = ['#4a7a4a','#7a3a3a','#4a5a8a','#8a7a3a'];
       for (let row = 0; row < 2; row++) {
-        for (let i = 0; i < 7; i++) {
-          drawBottle(x + 10 + i*(w/7), y + row*40 + 40, colors[(i+row)%4]);
-        }
+        for (let i = 0; i < 7; i++) drawBottle(x + 10 + i*(w/7), y + row*40 + 40, colors[(i+row)%4]);
       }
     }
 
@@ -330,8 +330,7 @@
       [14, w-34].forEach(off => {
         ctx.beginPath();
         ctx.moveTo(x+off, y+h-78); ctx.lineTo(x+off+20, y+h-78);
-        ctx.moveTo(x+off+10, y+h-90); ctx.lineTo(x+off+10, y+h-66);
-        ctx.stroke();
+        ctx.moveTo(x+off+10, y+h-90); ctx.lineTo(x+off+10, y+h-66); ctx.stroke();
       });
       ctx.strokeStyle = '#2a1f18'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(x+w/2, y+6); ctx.lineTo(x+w/2, y-10); ctx.stroke();
@@ -342,62 +341,96 @@
       drawShopDoor(x+w/2-25, groundY-70, '#2a1f18');
     }
 
-    // ===== INTERIORS =====
-    function drawWeaponStoreInterior() {
-      const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#6b5a4a'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#8a6a4a'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#6a4a30'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+    // ===== BROKEN BUILDING + GARAGE =====
+    function drawBrokenBuilding(x, groundY, w, h) {
+      const y = groundY - h;
+      ctx.fillStyle = '#6b6558'; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(40,38,32,0.25)';
+      for (let i = 0; i < 4; i++) {
+        const sx = x + 10 + i * (w / 4);
+        ctx.fillRect(sx, y, 6, h * (0.4 + (i%3)*0.15));
       }
-      drawShelfWithSwords(60, H*0.12, 200, H*0.3);
-      drawShelfWithSwords(320, H*0.12, 200, H*0.3);
-      drawCounter(W-260, H*0.55, 200, 90, '#5a3b28');
-      drawBook(W-200, H*0.55-14);
-      drawShopDoor(55, 220, '#3a2a20');
-      ctx.fillStyle = '#f2d98b'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 40, 210);
+      // Jagged roof
+      ctx.fillStyle = shadeColor('#6b6558', -25);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w*0.2, y-10);
+      ctx.lineTo(x + w*0.35, y);
+      ctx.lineTo(x + w*0.55, y-14);
+      ctx.lineTo(x + w*0.7, y);
+      ctx.lineTo(x + w*0.9, y-6);
+      ctx.lineTo(x + w, y);
+      ctx.closePath(); ctx.fill();
+
+      // Windows
+      const winW = 16, winH = 20, padX = 14, padY = 18;
+      let boardToggle = 0;
+      for (let wy = y + padY + 8; wy < y + h - winH; wy += winH + padY) {
+        for (let wx = x + padX; wx < x + w - winW; wx += winW + padX) {
+          if (boardToggle % 3 === 0) {
+            ctx.fillStyle = '#3d3226'; ctx.fillRect(wx, wy, winW, winH);
+            ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(wx, wy); ctx.lineTo(wx+winW, wy+winH);
+            ctx.moveTo(wx+winW, wy); ctx.lineTo(wx, wy+winH);
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = '#1a1a1a'; ctx.fillRect(wx, wy, winW, winH);
+            ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(wx + winW*0.3, wy);
+            ctx.lineTo(wx + winW*0.5, wy + winH*0.5);
+            ctx.lineTo(wx + winW*0.2, wy + winH);
+            ctx.stroke();
+          }
+          boardToggle++;
+        }
+      }
+      // Debris
+      ctx.fillStyle = '#5a5548';
+      ctx.beginPath(); ctx.ellipse(x + w*0.15, groundY, 20, 7, 0, 0, Math.PI*2); ctx.fill();
     }
 
-    function drawClothingStoreInterior() {
-      const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#c48fae'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#e8d9c9'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#c9b89a'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+    function drawParkingGarage(x, groundY, w, h) {
+      const y = groundY - h;
+      ctx.fillStyle = '#8a8a82'; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = shadeColor('#8a8a82', -20); ctx.fillRect(x, y, w, 10);
+
+      const levels = 3;
+      const levelH = (h - 10) / levels;
+      ctx.strokeStyle = '#5a5a52'; ctx.lineWidth = 4;
+      for (let i = 1; i < levels; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + 10 + levelH * i);
+        ctx.lineTo(x + w, y + 10 + levelH * i);
+        ctx.stroke();
       }
-      drawClothingRack(60, H*0.2, 220);
-      drawClothingRack(340, H*0.2, 220);
-      drawCounter(W-260, H*0.55, 200, 90, '#7a4a5a');
-      drawBook(W-200, H*0.55-14);
-      drawShopDoor(55, 220, '#7a4a5a');
-      ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 40, 210);
+
+      ctx.fillStyle = '#3a3a36';
+      for (let lvl = 0; lvl < levels; lvl++) {
+        const ly = y + 10 + levelH * lvl + 8;
+        const openH = levelH - 16;
+        const colCount = 4;
+        const colW = (w - 20) / colCount - 8;
+        for (let c = 0; c < colCount; c++) {
+          const cx = x + 10 + c * ((w - 20) / colCount);
+          ctx.fillRect(cx, ly, colW, openH);
+        }
+      }
+
+      // PARKING sign
+      ctx.fillStyle = '#2a2a26'; ctx.fillRect(x + w/2 - 55, y - 22, 110, 18);
+      ctx.fillStyle = '#e8c94a'; ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('PARKING', x + w/2, y - 8); ctx.textAlign = 'left';
+
+      // Entrance ramp
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x + w - 85, groundY - 80, 75, 80);
+      ctx.strokeStyle = '#5a5a52'; ctx.lineWidth = 3;
+      ctx.strokeRect(x + w - 85, groundY - 80, 75, 80);
+      ctx.fillStyle = '#e8c94a'; ctx.fillRect(x + w - 85, groundY - 6, 75, 6);
     }
 
-    function drawBarInterior() {
-      const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#3a2a20'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#4a3a2a'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#2a1f18'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
-      }
-      drawCounter(W-260, H*0.5, 200, 100, '#2a1f18');
-      drawBottleShelf(W-250, H*0.18, 180);
-      drawBottle(W-240, H*0.5+4, '#8a3a3a');
-      drawBottle(W-224, H*0.5+4, '#3a5a8a');
-      drawBottle(W-208, H*0.5+4, '#5a8a4a');
-      drawTableAndChairs(130, H*0.68);
-      drawTableAndChairs(320, H*0.7);
-      drawShopDoor(35, 220, '#2a1f18');
-      ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 20, 210);
-    }
-
-    // ===== OTHER ROOMS =====
+    // ===== ROOMS =====
     function drawRoom() {
       ctx.fillStyle = '#3d2b1f'; ctx.fillRect(0,0,canvas.width,canvas.height);
       ctx.fillStyle = '#5c4033'; ctx.fillRect(0,0,canvas.width,250);
@@ -463,8 +496,121 @@
       drawClothingStore(310, groundY, 140, H*0.34);
       drawBarShop(470, groundY, 140, H*0.36);
       drawDoor(55, 190, 70, 90);
+      // Right exit arrow
       ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '12px Courier New';
       ctx.fillText('◄ Hallway', 50, 180);
+      ctx.fillText('Garage ►', 560, 170);
+    }
+
+    function drawGarageStreet() {
+      const W = canvas.width, H = canvas.height, groundY = H * 0.55;
+
+      // Sky (slightly darker)
+      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+      sky.addColorStop(0, '#5a6b8a'); sky.addColorStop(1, '#a89aa0');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, groundY);
+
+      // Sidewalk
+      ctx.fillStyle = '#8f8f88'; ctx.fillRect(0, groundY, W, H*0.23);
+      ctx.strokeStyle = '#727268'; ctx.lineWidth = 2;
+      for (let x=0; x<W; x+=60) {
+        ctx.beginPath(); ctx.moveTo(x, groundY); ctx.lineTo(x, H*0.78); ctx.stroke();
+      }
+
+      // Road
+      ctx.fillStyle = '#3a3a42'; ctx.fillRect(0, H*0.78, W, H*0.22);
+      ctx.fillStyle = '#d9cb6a';
+      for (let x=10; x<W; x+=50) ctx.fillRect(x, H*0.78+(H*0.22)/2-3, 30, 6);
+
+      // Broken buildings + garage
+      drawBrokenBuilding(20, groundY, 140, H*0.30);
+      drawBrokenBuilding(180, groundY, 120, H*0.24);
+      drawParkingGarage(380, groundY, 240, H*0.40);
+
+      // Back to city
+      drawShopDoor(20, 185, '#5a3b28');
+      ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
+      ctx.fillText('◄ City', 18, 175);
+    }
+
+    function drawParkingGarageInterior() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#3a3a36'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#2a2a28'; ctx.fillRect(0, H*0.75, W, H*0.25);
+
+      // Pillars
+      ctx.fillStyle = '#5a5a52';
+      for (let x = 80; x < W; x += 140) {
+        ctx.fillRect(x, 40, 30, H*0.75 - 40);
+      }
+
+      // Ceiling beams
+      ctx.fillStyle = '#4a4a44';
+      for (let y = 60; y < H*0.7; y += 50) {
+        ctx.fillRect(0, y, W, 8);
+      }
+
+      ctx.fillStyle = '#e8c94a'; ctx.font = '16px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('Parking Garage', W/2, 40);
+      ctx.font = '12px Courier New'; ctx.fillStyle = '#aaa';
+      ctx.fillText('(Interior coming soon)', W/2, 220);
+      ctx.textAlign = 'left';
+
+      drawDoor(280, 380, 80, 70);
+    }
+
+    function drawWeaponStoreInterior() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#6b5a4a'; ctx.fillRect(0, 0, W, H*0.75);
+      ctx.fillStyle = '#8a6a4a'; ctx.fillRect(0, H*0.75, W, H*0.25);
+      ctx.strokeStyle = '#6a4a30'; ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      }
+      drawShelfWithSwords(60, H*0.12, 200, H*0.3);
+      drawShelfWithSwords(320, H*0.12, 200, H*0.3);
+      drawCounter(W-260, H*0.55, 200, 90, '#5a3b28');
+      drawBook(W-200, H*0.55-14);
+      drawShopDoor(55, 220, '#3a2a20');
+      ctx.fillStyle = '#f2d98b'; ctx.font = '12px Courier New';
+      ctx.fillText('◄ Street', 40, 210);
+    }
+
+    function drawClothingStoreInterior() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#c48fae'; ctx.fillRect(0, 0, W, H*0.75);
+      ctx.fillStyle = '#e8d9c9'; ctx.fillRect(0, H*0.75, W, H*0.25);
+      ctx.strokeStyle = '#c9b89a'; ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      }
+      drawClothingRack(60, H*0.2, 220);
+      drawClothingRack(340, H*0.2, 220);
+      drawCounter(W-260, H*0.55, 200, 90, '#7a4a5a');
+      drawBook(W-200, H*0.55-14);
+      drawShopDoor(55, 220, '#7a4a5a');
+      ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
+      ctx.fillText('◄ Street', 40, 210);
+    }
+
+    function drawBarInterior() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#3a2a20'; ctx.fillRect(0, 0, W, H*0.75);
+      ctx.fillStyle = '#4a3a2a'; ctx.fillRect(0, H*0.75, W, H*0.25);
+      ctx.strokeStyle = '#2a1f18'; ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      }
+      drawCounter(W-260, H*0.5, 200, 100, '#2a1f18');
+      drawBottleShelf(W-250, H*0.18, 180);
+      drawBottle(W-240, H*0.5+4, '#8a3a3a');
+      drawBottle(W-224, H*0.5+4, '#3a5a8a');
+      drawBottle(W-208, H*0.5+4, '#5a8a4a');
+      drawTableAndChairs(130, H*0.68);
+      drawTableAndChairs(320, H*0.7);
+      drawShopDoor(35, 220, '#2a1f18');
+      ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
+      ctx.fillText('◄ Street', 20, 210);
     }
 
     function draw() {
@@ -472,6 +618,8 @@
       else if (currentRoom === 'hallway') drawHallway();
       else if (currentRoom === 'kitchen') drawKitchen();
       else if (currentRoom === 'outside') drawCity();
+      else if (currentRoom === 'garageStreet') drawGarageStreet();
+      else if (currentRoom === 'parkingGarage') drawParkingGarageInterior();
       else if (currentRoom === 'weaponStore') drawWeaponStoreInterior();
       else if (currentRoom === 'clothingStore') drawClothingStoreInterior();
       else if (currentRoom === 'bar') drawBarInterior();

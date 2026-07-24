@@ -41,7 +41,6 @@
     const ctx = canvas.getContext('2d');
     const roomLabel = document.getElementById('roomLabel');
 
-    // ===== SPRITESHEET =====
     const sheet = new Image();
     sheet.src = 'ani_sheet.png?' + Date.now();
 
@@ -54,47 +53,60 @@
     const off = document.createElement('canvas');
     const offCtx = off.getContext('2d');
 
-    // ===== CHARACTER =====
     const ani = {
-      x: 270,
-      y: 160,
-      targetX: 270,
-      targetY: 160,
-      speed: 2.8,
-      facing: 1,
-      frame: IDLE_FRAME,
-      animTimer: 0,
-      scale: 0.36
+      x: 270, y: 160, targetX: 270, targetY: 160,
+      speed: 2.8, facing: 1, frame: IDLE_FRAME, animTimer: 0, scale: 0.36
     };
 
-    // ===== ROOMS =====
     let currentRoom = 'room';
 
     const rooms = {
       room: {
         name: "Ani's Room",
         doors: [
-          { x: 545, y: 110, w: 80, h: 170, target: 'hallway', spawnX: 90, spawnY: 160, label: 'Hallway' }
+          { x: 545, y: 110, w: 80, h: 170, target: 'hallway', spawnX: 90, spawnY: 160 }
         ]
       },
       hallway: {
         name: 'Hallway',
         doors: [
-          { x: 15, y: 110, w: 75, h: 170, target: 'room', spawnX: 480, spawnY: 160, label: "Ani's Room" },
-          { x: 550, y: 110, w: 75, h: 170, target: 'outside', spawnX: 80, spawnY: 200, label: 'City' },
-          { x: 270, y: 110, w: 100, h: 170, target: 'kitchen', spawnX: 300, spawnY: 180, label: 'Kitchen' }
+          { x: 15, y: 110, w: 75, h: 170, target: 'room', spawnX: 480, spawnY: 160 },
+          { x: 550, y: 110, w: 75, h: 170, target: 'outside', spawnX: 80, spawnY: 200 },
+          { x: 270, y: 110, w: 100, h: 170, target: 'kitchen', spawnX: 300, spawnY: 180 }
         ]
       },
       kitchen: {
         name: 'Kitchen',
         doors: [
-          { x: 270, y: 380, w: 100, h: 70, target: 'hallway', spawnX: 300, spawnY: 140, label: 'Hallway' }
+          { x: 270, y: 380, w: 100, h: 70, target: 'hallway', spawnX: 300, spawnY: 140 }
         ]
       },
       outside: {
         name: 'City Street',
         doors: [
-          { x: 55, y: 190, w: 70, h: 90, target: 'hallway', spawnX: 500, spawnY: 160, label: 'Hallway' }
+          { x: 55, y: 190, w: 70, h: 90, target: 'hallway', spawnX: 500, spawnY: 160 },
+          // Shop doors
+          { x: 195, y: 194, w: 50, h: 70, target: 'weaponStore', spawnX: 300, spawnY: 200 },
+          { x: 355, y: 194, w: 50, h: 70, target: 'clothingStore', spawnX: 300, spawnY: 200 },
+          { x: 525, y: 194, w: 50, h: 70, target: 'bar', spawnX: 300, spawnY: 200 }
+        ]
+      },
+      weaponStore: {
+        name: 'Weapon Store',
+        doors: [
+          { x: 280, y: 380, w: 80, h: 70, target: 'outside', spawnX: 210, spawnY: 210 }
+        ]
+      },
+      clothingStore: {
+        name: 'Clothing Store',
+        doors: [
+          { x: 280, y: 380, w: 80, h: 70, target: 'outside', spawnX: 370, spawnY: 210 }
+        ]
+      },
+      bar: {
+        name: 'The Bar',
+        doors: [
+          { x: 280, y: 380, w: 80, h: 70, target: 'outside', spawnX: 540, spawnY: 210 }
         ]
       }
     };
@@ -123,14 +135,11 @@
 
     function changeRoom(target, spawnX, spawnY) {
       currentRoom = target;
-      ani.x = spawnX;
-      ani.y = spawnY;
-      ani.targetX = spawnX;
-      ani.targetY = spawnY;
+      ani.x = spawnX; ani.y = spawnY;
+      ani.targetX = spawnX; ani.targetY = spawnY;
       roomLabel.textContent = rooms[currentRoom].name;
     }
 
-    // ===== CLICK =====
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -150,7 +159,6 @@
       ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 280);
     });
 
-    // ===== UPDATE =====
     function update() {
       const dx = ani.targetX - ani.x;
       const dy = ani.targetY - ani.y;
@@ -159,10 +167,8 @@
       if (dist > 3) {
         ani.x += (dx / dist) * ani.speed;
         ani.y += (dy / dist) * ani.speed;
-
         if (dx > 0.5) ani.facing = 1;
         if (dx < -0.5) ani.facing = -1;
-
         ani.animTimer++;
         if (ani.animTimer > 12) {
           ani.animTimer = 0;
@@ -170,8 +176,7 @@
         }
       } else {
         ani.frame = IDLE_FRAME;
-        ani.x = ani.targetX;
-        ani.y = ani.targetY;
+        ani.x = ani.targetX; ani.y = ani.targetY;
       }
     }
 
@@ -191,35 +196,6 @@
       ctx.fill();
     }
 
-    function drawBed() {
-      ctx.fillStyle = '#4a2c17';
-      ctx.fillRect(28, 155, 18, 120);
-      ctx.fillStyle = '#6b3e26';
-      ctx.fillRect(40, 195, 165, 70);
-      ctx.fillStyle = '#c45c26';
-      ctx.fillRect(55, 200, 140, 55);
-      ctx.fillStyle = '#e8d5b7';
-      ctx.fillRect(58, 205, 48, 22);
-      ctx.fillStyle = '#3d2415';
-      ctx.fillRect(42, 260, 14, 18);
-      ctx.fillRect(180, 260, 14, 18);
-    }
-
-    function drawDresser() {
-      ctx.fillStyle = '#5c4033';
-      ctx.fillRect(400, 150, 120, 130);
-      ctx.fillStyle = '#7a5c45';
-      ctx.fillRect(395, 145, 130, 12);
-      ctx.fillStyle = '#4a3328';
-      ctx.fillRect(410, 170, 100, 28);
-      ctx.fillRect(410, 210, 100, 28);
-      ctx.fillRect(410, 250, 100, 22);
-      ctx.fillStyle = '#d4af37';
-      ctx.fillRect(450, 180, 18, 7);
-      ctx.fillRect(450, 220, 18, 7);
-      ctx.fillRect(450, 257, 18, 7);
-    }
-
     function shadeColor(hex, amt) {
       const num = parseInt(hex.replace('#', ''), 16);
       let r = (num >> 16) + amt;
@@ -231,20 +207,163 @@
       return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     }
 
-    function drawBuilding(x, groundY, w, h, wallColor, windowColor) {
+    function drawShopDoor(doorX, doorY, frameColor) {
+      const doorW = 50, doorH = 70;
+      ctx.fillStyle = frameColor;
+      ctx.fillRect(doorX, doorY, doorW, doorH);
+      ctx.fillStyle = shadeColor(frameColor, -15);
+      ctx.fillRect(doorX + 4, doorY + 4, doorW - 8, doorH - 8);
+      ctx.fillStyle = '#e8d97a';
+      ctx.beginPath();
+      ctx.arc(doorX + doorW - 12, doorY + doorH / 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawSword(cx, cy, angle, color) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.fillStyle = color;
+      ctx.fillRect(-3, -30, 6, 34);
+      ctx.beginPath();
+      ctx.moveTo(-3, -30); ctx.lineTo(0, -38); ctx.lineTo(3, -30);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#8a6a3a';
+      ctx.fillRect(-8, 3, 16, 4);
+      ctx.fillStyle = '#5a3b28';
+      ctx.fillRect(-2, 6, 4, 12);
+      ctx.restore();
+    }
+
+    function drawShirt(cx, cy, color) {
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx, cy); ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.fillRect(cx - 6, cy, 12, 14);
+      ctx.fillRect(cx - 10, cy, 4, 8);
+      ctx.fillRect(cx + 6, cy, 4, 8);
+    }
+
+    function drawBarrel(cx, cy) {
+      ctx.fillStyle = '#8a6a3a';
+      ctx.fillRect(cx - 10, cy, 20, 22);
+      ctx.strokeStyle = '#4a3a2a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - 10, cy + 4, 20, 3);
+      ctx.strokeRect(cx - 10, cy + 15, 20, 3);
+    }
+
+    function drawWeaponStore(x, groundY, w, h) {
       const y = groundY - h;
-      ctx.fillStyle = wallColor;
+      ctx.fillStyle = '#5a4a42';
       ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = shadeColor(wallColor, -25);
+      ctx.fillStyle = shadeColor('#5a4a42', -20);
       ctx.fillRect(x, y, w, 8);
 
-      const winW = 14, winH = 18, padX = 12, padY = 16;
-      for (let wy = y + padY + 8; wy < y + h - winH; wy += winH + padY) {
-        for (let wx = x + padX; wx < x + w - winW; wx += winW + padX) {
-          ctx.fillStyle = windowColor;
-          ctx.fillRect(wx, wy, winW, winH);
-        }
+      ctx.fillStyle = '#3d2818';
+      ctx.fillRect(x + 10, y + 14, w - 20, 24);
+      ctx.fillStyle = '#d9b25a';
+      ctx.font = '12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('WEAPONS', x + w / 2, y + 31);
+      ctx.textAlign = 'left';
+
+      ctx.fillStyle = '#e8d98b';
+      ctx.fillRect(x + 12, y + h - 90, 18, 22);
+      ctx.fillRect(x + w - 30, y + h - 90, 18, 22);
+
+      drawSword(x + w / 2 - 6, y + h - 80, -0.5, '#c9c9d0');
+      drawSword(x + w / 2 + 6, y + h - 80, 0.5, '#c9c9d0');
+
+      drawShopDoor(x + w / 2 - 25, groundY - 70, '#3a2a20');
+    }
+
+    function drawClothingStore(x, groundY, w, h) {
+      const y = groundY - h;
+      ctx.fillStyle = '#a86b8a';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = shadeColor('#a86b8a', -20);
+      ctx.fillRect(x, y, w, 8);
+
+      const awningY = y + h - 96;
+      ctx.fillStyle = '#e8d98b';
+      ctx.fillRect(x + 8, awningY, w - 16, 10);
+      ctx.fillStyle = '#d9556b';
+      for (let i = 0; i < w - 16; i += 12) {
+        ctx.fillRect(x + 8 + i, awningY, 6, 10);
       }
+      ctx.fillStyle = '#f2f2ea';
+      for (let i = 0; i < w - 16; i += 12) {
+        ctx.beginPath();
+        ctx.arc(x + 8 + i + 6, awningY + 10, 5, 0, Math.PI);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#cfe8ec';
+      ctx.fillRect(x + 12, awningY + 12, w - 24, 40);
+      drawShirt(x + 24, awningY + 20, '#d9556b');
+      drawShirt(x + 48, awningY + 20, '#5a8fc9');
+      drawShirt(x + 72, awningY + 20, '#e8c94a');
+
+      ctx.fillStyle = '#3d2818';
+      ctx.font = '11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('CLOTHES', x + w / 2, y + 20);
+      ctx.textAlign = 'left';
+
+      drawShopDoor(x + w / 2 - 25, groundY - 70, '#7a4a5a');
+    }
+
+    function drawBarShop(x, groundY, w, h) {
+      const y = groundY - h;
+      ctx.fillStyle = '#4a3a2a';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = shadeColor('#4a3a2a', -20);
+      ctx.fillRect(x, y, w, 8);
+
+      ctx.fillStyle = '#f2c14a';
+      ctx.fillRect(x + 14, y + h - 90, 20, 24);
+      ctx.fillRect(x + w - 34, y + h - 90, 20, 24);
+
+      ctx.strokeStyle = '#4a3a2a';
+      ctx.lineWidth = 2;
+      [14, w - 34].forEach(off => {
+        ctx.beginPath();
+        ctx.moveTo(x + off, y + h - 78);
+        ctx.lineTo(x + off + 20, y + h - 78);
+        ctx.moveTo(x + off + 10, y + h - 90);
+        ctx.lineTo(x + off + 10, y + h - 66);
+        ctx.stroke();
+      });
+
+      ctx.strokeStyle = '#2a1f18';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2, y + 6);
+      ctx.lineTo(x + w / 2, y - 10);
+      ctx.stroke();
+
+      ctx.fillStyle = '#2a1f18';
+      ctx.fillRect(x + w / 2 - 30, y - 26, 60, 20);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = '11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('THE BAR', x + w / 2, y - 12);
+      ctx.textAlign = 'left';
+
+      ctx.fillStyle = '#e8c94a';
+      ctx.fillRect(x + w / 2 - 6, y - 42, 10, 12);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + w / 2 + 6, y - 37, 4, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+
+      drawBarrel(x + w / 2 - 45, groundY - 22);
+      drawBarrel(x + w / 2 + 33, groundY - 22);
+
+      drawShopDoor(x + w / 2 - 25, groundY - 70, '#2a1f18');
     }
 
     // ===== ROOM DRAWERS =====
@@ -253,45 +372,37 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#5c4033';
       ctx.fillRect(0, 0, canvas.width, 250);
-
       ctx.strokeStyle = '#2a1a10';
       ctx.lineWidth = 2;
       for (let y = 250; y < canvas.height; y += 24) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
-
-      drawBed();
-      drawDresser();
+      // simple bed + dresser
+      ctx.fillStyle = '#4a2c17'; ctx.fillRect(28, 155, 18, 120);
+      ctx.fillStyle = '#6b3e26'; ctx.fillRect(40, 195, 165, 70);
+      ctx.fillStyle = '#c45c26'; ctx.fillRect(55, 200, 140, 55);
+      ctx.fillStyle = '#e8d5b7'; ctx.fillRect(58, 205, 48, 22);
+      ctx.fillStyle = '#5c4033'; ctx.fillRect(400, 150, 120, 130);
+      ctx.fillStyle = '#7a5c45'; ctx.fillRect(395, 145, 130, 12);
       drawDoor(545, 110, 80, 170);
     }
 
     function drawHallway() {
       ctx.fillStyle = '#2c241b';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       ctx.fillStyle = '#4a3b2f';
       ctx.fillRect(0, 0, canvas.width, 250);
-
       ctx.strokeStyle = '#1a140e';
       ctx.lineWidth = 2;
       for (let y = 250; y < canvas.height; y += 22) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
-
       ctx.fillStyle = '#3a2e24';
       ctx.fillRect(0, 0, 20, canvas.height);
       ctx.fillRect(620, 0, 20, canvas.height);
-
       drawDoor(15, 110, 75, 170);
       drawDoor(550, 110, 75, 170);
       drawDoor(270, 110, 100, 170);
-
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.font = '12px Courier New';
       ctx.fillText('Kitchen', 290, 100);
@@ -301,7 +412,6 @@
     function drawKitchen() {
       ctx.fillStyle = '#e8e8e8';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       ctx.strokeStyle = '#c8c8c8';
       ctx.lineWidth = 1;
       for (let x = 0; x < canvas.width; x += 40) {
@@ -310,15 +420,12 @@
       for (let y = 0; y < canvas.height; y += 40) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
-
       ctx.fillStyle = '#f5f5f5';
       ctx.fillRect(0, 0, canvas.width, 220);
-
       ctx.fillStyle = '#d0d0d0';
       ctx.fillRect(40, 200, 560, 50);
       ctx.fillStyle = '#b0b0b0';
       ctx.fillRect(40, 245, 560, 18);
-
       ctx.fillStyle = '#333';
       ctx.fillRect(80, 175, 110, 30);
       ctx.fillStyle = '#222';
@@ -327,7 +434,6 @@
       ctx.fillStyle = '#111';
       ctx.beginPath(); ctx.arc(110, 170, 12, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(160, 170, 12, 0, Math.PI*2); ctx.fill();
-
       ctx.fillStyle = '#aaa';
       ctx.fillRect(280, 185, 90, 25);
       ctx.fillStyle = '#888';
@@ -335,67 +441,72 @@
       ctx.fillStyle = '#666';
       ctx.fillRect(320, 170, 10, 20);
       ctx.fillRect(310, 168, 30, 6);
-
       ctx.fillStyle = '#ddd';
       ctx.fillRect(420, 80, 80, 90);
       ctx.fillRect(510, 80, 80, 90);
-      ctx.strokeStyle = '#bbb';
-      ctx.strokeRect(420, 80, 80, 90);
-      ctx.strokeRect(510, 80, 80, 90);
-      ctx.fillStyle = '#888';
-      ctx.fillRect(455, 120, 8, 15);
-      ctx.fillRect(545, 120, 8, 15);
-
       drawDoor(270, 380, 100, 70);
     }
 
     function drawCity() {
       const W = canvas.width;
       const H = canvas.height;
+      const groundY = H * 0.55;
 
-      // Sky (soft dusk)
-      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+      // Sky
+      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
       sky.addColorStop(0, '#6b7fb0');
       sky.addColorStop(1, '#c9a8c2');
       ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, W, H * 0.55);
+      ctx.fillRect(0, 0, W, groundY);
 
       // Sidewalk
       ctx.fillStyle = '#9a9a92';
-      ctx.fillRect(0, H * 0.55, W, H * 0.23);
+      ctx.fillRect(0, groundY, W, H * 0.23);
       ctx.strokeStyle = '#7d7d74';
       ctx.lineWidth = 2;
       for (let x = 0; x < W; x += 60) {
-        ctx.beginPath();
-        ctx.moveTo(x, H * 0.55);
-        ctx.lineTo(x, H * 0.78);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, groundY); ctx.lineTo(x, H * 0.78); ctx.stroke();
       }
 
       // Road
       ctx.fillStyle = '#3a3a42';
       ctx.fillRect(0, H * 0.78, W, H * 0.22);
-
-      // Dashed center line
       ctx.fillStyle = '#e8d97a';
-      const dashW = 30, gap = 20, lineY = H * 0.78 + (H * 0.22) / 2 - 3;
-      for (let x = 10; x < W; x += dashW + gap) {
-        ctx.fillRect(x, lineY, dashW, 6);
+      const lineY = H * 0.78 + (H * 0.22) / 2 - 3;
+      for (let x = 10; x < W; x += 50) {
+        ctx.fillRect(x, lineY, 30, 6);
       }
 
-      // Buildings
-      drawBuilding(20, H * 0.55, 140, H * 0.32, '#b06a5a', '#f2d98b');
-      drawBuilding(180, H * 0.55, 120, H * 0.40, '#7a8f7a', '#f2d98b');
-      drawBuilding(320, H * 0.55, 150, H * 0.28, '#8a7aa0', '#f2d98b');
-      drawBuilding(490, H * 0.55, 130, H * 0.36, '#c98d5b', '#f2d98b');
+      // The three shops
+      drawWeaponStore(160, groundY, 130, H * 0.38);
+      drawClothingStore(310, groundY, 140, H * 0.34);
+      drawBarShop(470, groundY, 140, H * 0.36);
 
       // Door back to hallway
       drawDoor(55, 190, 70, 90);
-
-      // Label
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '12px Courier New';
       ctx.fillText('◄ Hallway', 50, 180);
+    }
+
+    function drawShopInterior(title, bgColor) {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(0, 0, canvas.width, 80);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '18px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(title, canvas.width / 2, 50);
+      ctx.font = '13px Courier New';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('(Interior coming soon)', canvas.width / 2, 220);
+      ctx.fillText('Click the door to leave', canvas.width / 2, 250);
+      ctx.textAlign = 'left';
+
+      drawDoor(280, 380, 80, 70);
     }
 
     // ===== MAIN DRAW =====
@@ -404,6 +515,9 @@
       else if (currentRoom === 'hallway') drawHallway();
       else if (currentRoom === 'kitchen') drawKitchen();
       else if (currentRoom === 'outside') drawCity();
+      else if (currentRoom === 'weaponStore') drawShopInterior('Weapon Store', '#3a3028');
+      else if (currentRoom === 'clothingStore') drawShopInterior('Clothing Store', '#4a3040');
+      else if (currentRoom === 'bar') drawShopInterior('The Bar', '#2a2018');
 
       const drawW = frameW * ani.scale;
       const drawH = frameH * ani.scale;

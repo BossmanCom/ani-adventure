@@ -70,7 +70,6 @@
     // ===== ROOMS =====
     let currentRoom = 'room';
 
-    // Bigger doors so they feel right next to Ani
     const rooms = {
       room: {
         name: "Ani's Room",
@@ -82,7 +81,7 @@
         name: 'Hallway',
         doors: [
           { x: 15, y: 110, w: 75, h: 170, target: 'room', spawnX: 480, spawnY: 160, label: "Ani's Room" },
-          { x: 550, y: 110, w: 75, h: 170, target: 'outside', spawnX: 100, spawnY: 160, label: 'Outside' },
+          { x: 550, y: 110, w: 75, h: 170, target: 'outside', spawnX: 80, spawnY: 200, label: 'City' },
           { x: 270, y: 110, w: 100, h: 170, target: 'kitchen', spawnX: 300, spawnY: 180, label: 'Kitchen' }
         ]
       },
@@ -93,9 +92,9 @@
         ]
       },
       outside: {
-        name: 'Outside (Coming Soon)',
+        name: 'City Street',
         doors: [
-          { x: 15, y: 110, w: 75, h: 170, target: 'hallway', spawnX: 480, spawnY: 160, label: 'Hallway' }
+          { x: 55, y: 190, w: 70, h: 90, target: 'hallway', spawnX: 500, spawnY: 160, label: 'Hallway' }
         ]
       }
     };
@@ -139,7 +138,6 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
-      // Check doors first
       const doors = rooms[currentRoom].doors;
       for (const d of doors) {
         if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
@@ -148,9 +146,8 @@
         }
       }
 
-      // Otherwise move
       ani.targetX = mx - (frameW * ani.scale) / 2;
-      ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 200);
+      ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 280);
     });
 
     // ===== UPDATE =====
@@ -180,21 +177,14 @@
 
     // ===== DRAW HELPERS =====
     function drawDoor(x, y, w, h) {
-      // Door frame
       ctx.fillStyle = '#3d2914';
       ctx.fillRect(x - 5, y - 5, w + 10, h + 10);
-
-      // Door
       ctx.fillStyle = '#8B4513';
       ctx.fillRect(x, y, w, h);
-
-      // Panels
       ctx.strokeStyle = '#5c3317';
       ctx.lineWidth = 2;
       ctx.strokeRect(x + 8, y + 10, w - 16, h/2 - 16);
       ctx.strokeRect(x + 8, y + h/2 + 6, w - 16, h/2 - 18);
-
-      // Knob
       ctx.fillStyle = '#d4af37';
       ctx.beginPath();
       ctx.arc(x + w - 14, y + h/2, 6, 0, Math.PI * 2);
@@ -230,6 +220,33 @@
       ctx.fillRect(450, 257, 18, 7);
     }
 
+    function shadeColor(hex, amt) {
+      const num = parseInt(hex.replace('#', ''), 16);
+      let r = (num >> 16) + amt;
+      let g = ((num >> 8) & 0x00FF) + amt;
+      let b = (num & 0x0000FF) + amt;
+      r = Math.max(Math.min(255, r), 0);
+      g = Math.max(Math.min(255, g), 0);
+      b = Math.max(Math.min(255, b), 0);
+      return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    function drawBuilding(x, groundY, w, h, wallColor, windowColor) {
+      const y = groundY - h;
+      ctx.fillStyle = wallColor;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = shadeColor(wallColor, -25);
+      ctx.fillRect(x, y, w, 8);
+
+      const winW = 14, winH = 18, padX = 12, padY = 16;
+      for (let wy = y + padY + 8; wy < y + h - winH; wy += winH + padY) {
+        for (let wx = x + padX; wx < x + w - winW; wx += winW + padX) {
+          ctx.fillStyle = windowColor;
+          ctx.fillRect(wx, wy, winW, winH);
+        }
+      }
+    }
+
     // ===== ROOM DRAWERS =====
     function drawRoom() {
       ctx.fillStyle = '#3d2b1f';
@@ -248,8 +265,6 @@
 
       drawBed();
       drawDresser();
-
-      // Bigger door to hallway
       drawDoor(545, 110, 80, 170);
     }
 
@@ -269,56 +284,41 @@
         ctx.stroke();
       }
 
-      // Side walls
       ctx.fillStyle = '#3a2e24';
       ctx.fillRect(0, 0, 20, canvas.height);
       ctx.fillRect(620, 0, 20, canvas.height);
 
-      // Bigger doors
-      drawDoor(15, 110, 75, 170);   // back to room
-      drawDoor(550, 110, 75, 170);  // outside
-
-      // Full-size kitchen door
+      drawDoor(15, 110, 75, 170);
+      drawDoor(550, 110, 75, 170);
       drawDoor(270, 110, 100, 170);
 
-      // Labels
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.font = '12px Courier New';
       ctx.fillText('Kitchen', 290, 100);
-      ctx.fillText('Outside', 560, 100);
+      ctx.fillText('City', 570, 100);
     }
 
     function drawKitchen() {
-      // White tile floor
       ctx.fillStyle = '#e8e8e8';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.strokeStyle = '#c8c8c8';
       ctx.lineWidth = 1;
       for (let x = 0; x < canvas.width; x += 40) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
       }
       for (let y = 0; y < canvas.height; y += 40) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
 
-      // Back wall
       ctx.fillStyle = '#f5f5f5';
       ctx.fillRect(0, 0, canvas.width, 220);
 
-      // Counter
       ctx.fillStyle = '#d0d0d0';
       ctx.fillRect(40, 200, 560, 50);
       ctx.fillStyle = '#b0b0b0';
       ctx.fillRect(40, 245, 560, 18);
 
-      // Stove
       ctx.fillStyle = '#333';
       ctx.fillRect(80, 175, 110, 30);
       ctx.fillStyle = '#222';
@@ -328,7 +328,6 @@
       ctx.beginPath(); ctx.arc(110, 170, 12, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(160, 170, 12, 0, Math.PI*2); ctx.fill();
 
-      // Sink
       ctx.fillStyle = '#aaa';
       ctx.fillRect(280, 185, 90, 25);
       ctx.fillStyle = '#888';
@@ -337,7 +336,6 @@
       ctx.fillRect(320, 170, 10, 20);
       ctx.fillRect(310, 168, 30, 6);
 
-      // Cupboards
       ctx.fillStyle = '#ddd';
       ctx.fillRect(420, 80, 80, 90);
       ctx.fillRect(510, 80, 80, 90);
@@ -348,30 +346,56 @@
       ctx.fillRect(455, 120, 8, 15);
       ctx.fillRect(545, 120, 8, 15);
 
-      // Bigger door back to hallway
       drawDoor(270, 380, 100, 70);
     }
 
-    function drawOutside() {
-      ctx.fillStyle = '#1a2a3a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    function drawCity() {
+      const W = canvas.width;
+      const H = canvas.height;
 
-      ctx.fillStyle = '#0d1b2a';
-      ctx.fillRect(0, 0, canvas.width, 200);
+      // Sky (soft dusk)
+      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+      sky.addColorStop(0, '#6b7fb0');
+      sky.addColorStop(1, '#c9a8c2');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H * 0.55);
 
-      ctx.fillStyle = '#2d4a3e';
-      ctx.fillRect(0, 280, canvas.width, 200);
+      // Sidewalk
+      ctx.fillStyle = '#9a9a92';
+      ctx.fillRect(0, H * 0.55, W, H * 0.23);
+      ctx.strokeStyle = '#7d7d74';
+      ctx.lineWidth = 2;
+      for (let x = 0; x < W; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, H * 0.55);
+        ctx.lineTo(x, H * 0.78);
+        ctx.stroke();
+      }
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '18px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText('Outside City - Coming Soon', canvas.width/2, 230);
-      ctx.font = '13px Courier New';
-      ctx.fillStyle = '#aaaaaa';
-      ctx.fillText('Click the door to go back', canvas.width/2, 260);
-      ctx.textAlign = 'left';
+      // Road
+      ctx.fillStyle = '#3a3a42';
+      ctx.fillRect(0, H * 0.78, W, H * 0.22);
 
-      drawDoor(15, 110, 75, 170);
+      // Dashed center line
+      ctx.fillStyle = '#e8d97a';
+      const dashW = 30, gap = 20, lineY = H * 0.78 + (H * 0.22) / 2 - 3;
+      for (let x = 10; x < W; x += dashW + gap) {
+        ctx.fillRect(x, lineY, dashW, 6);
+      }
+
+      // Buildings
+      drawBuilding(20, H * 0.55, 140, H * 0.32, '#b06a5a', '#f2d98b');
+      drawBuilding(180, H * 0.55, 120, H * 0.40, '#7a8f7a', '#f2d98b');
+      drawBuilding(320, H * 0.55, 150, H * 0.28, '#8a7aa0', '#f2d98b');
+      drawBuilding(490, H * 0.55, 130, H * 0.36, '#c98d5b', '#f2d98b');
+
+      // Door back to hallway
+      drawDoor(55, 190, 70, 90);
+
+      // Label
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '12px Courier New';
+      ctx.fillText('◄ Hallway', 50, 180);
     }
 
     // ===== MAIN DRAW =====
@@ -379,7 +403,7 @@
       if (currentRoom === 'room') drawRoom();
       else if (currentRoom === 'hallway') drawHallway();
       else if (currentRoom === 'kitchen') drawKitchen();
-      else if (currentRoom === 'outside') drawOutside();
+      else if (currentRoom === 'outside') drawCity();
 
       const drawW = frameW * ani.scale;
       const drawH = frameH * ani.scale;

@@ -34,12 +34,14 @@
 </head>
 <body>
   <canvas id="gameCanvas" width="640" height="480"></canvas>
-  <div class="info">Ani Adventure - Click to move</div>
+  <div class="info" id="roomLabel">Ani's Room</div>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+    const roomLabel = document.getElementById('roomLabel');
 
+    // ===== SPRITESHEET =====
     const sheet = new Image();
     sheet.src = 'ani_sheet.png?' + Date.now();
 
@@ -52,6 +54,7 @@
     const off = document.createElement('canvas');
     const offCtx = off.getContext('2d');
 
+    // ===== CHARACTER =====
     const ani = {
       x: 270,
       y: 160,
@@ -61,8 +64,39 @@
       facing: 1,
       frame: IDLE_FRAME,
       animTimer: 0,
-      isMoving: false,
       scale: 0.36
+    };
+
+    // ===== ROOMS =====
+    let currentRoom = 'room';
+
+    const rooms = {
+      room: {
+        name: "Ani's Room",
+        doors: [
+          { x: 560, y: 140, w: 60, h: 140, target: 'hallway', spawnX: 80, spawnY: 160, label: 'Hallway' }
+        ]
+      },
+      hallway: {
+        name: 'Hallway',
+        doors: [
+          { x: 20, y: 140, w: 55, h: 140, target: 'room', spawnX: 500, spawnY: 160, label: "Ani's Room" },
+          { x: 560, y: 140, w: 60, h: 140, target: 'outside', spawnX: 100, spawnY: 160, label: 'Outside' },
+          { x: 280, y: 100, w: 80, h: 50, target: 'kitchen', spawnX: 300, spawnY: 180, label: 'Kitchen' }
+        ]
+      },
+      kitchen: {
+        name: 'Kitchen',
+        doors: [
+          { x: 280, y: 400, w: 80, h: 50, target: 'hallway', spawnX: 300, spawnY: 140, label: 'Hallway' }
+        ]
+      },
+      outside: {
+        name: 'Outside (Coming Soon)',
+        doors: [
+          { x: 20, y: 140, w: 55, h: 140, target: 'hallway', spawnX: 500, spawnY: 160, label: 'Hallway' }
+        ]
+      }
     };
 
     sheet.onload = () => {
@@ -76,21 +110,27 @@
     function getCleanFrame(frameIndex) {
       const col = frameIndex % 2;
       const row = Math.floor(frameIndex / 2);
-
       offCtx.clearRect(0, 0, frameW, frameH);
       offCtx.drawImage(sheet, col * frameW, row * frameH, frameW, frameH, 0, 0, frameW, frameH);
-
       const imgData = offCtx.getImageData(0, 0, frameW, frameH);
       const data = imgData.data;
-
       for (let i = 0; i < data.length; i += 4) {
         if (data[i] > 230 && data[i+1] > 230 && data[i+2] > 230) data[i+3] = 0;
       }
-
       offCtx.putImageData(imgData, 0, 0);
       return off;
     }
 
+    function changeRoom(target, spawnX, spawnY) {
+      currentRoom = target;
+      ani.x = spawnX;
+      ani.y = spawnY;
+      ani.targetX = spawnX;
+      ani.targetY = spawnY;
+      roomLabel.textContent = rooms[currentRoom].name;
+    }
+
+    // ===== CLICK =====
     canvas.addEventListener('click', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -98,17 +138,27 @@
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
 
+      // Check doors first
+      const doors = rooms[currentRoom].doors;
+      for (const d of doors) {
+        if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
+          changeRoom(d.target, d.spawnX, d.spawnY);
+          return;
+        }
+      }
+
+      // Otherwise move
       ani.targetX = mx - (frameW * ani.scale) / 2;
       ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 200);
     });
 
+    // ===== UPDATE =====
     function update() {
       const dx = ani.targetX - ani.x;
       const dy = ani.targetY - ani.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
 
       if (dist > 3) {
-        ani.isMoving = true;
         ani.x += (dx / dist) * ani.speed;
         ani.y += (dy / dist) * ani.speed;
 
@@ -121,96 +171,72 @@
           ani.frame = (ani.frame === WALK_FRAMES[0]) ? WALK_FRAMES[1] : WALK_FRAMES[0];
         }
       } else {
-        ani.isMoving = false;
         ani.frame = IDLE_FRAME;
         ani.x = ani.targetX;
         ani.y = ani.targetY;
       }
     }
 
+    // ===== DRAW HELPERS =====
+    function drawDoor(x, y, w, h, label) {
+      // Door frame
+      ctx.fillStyle = '#3d2914';
+      ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+
+      // Door
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(x, y, w, h);
+
+      // Panels
+      ctx.strokeStyle = '#5c3317';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 6, y + 8, w - 12, h/2 - 12);
+      ctx.strokeRect(x + 6, y + h/2 + 4, w - 12, h/2 - 14);
+
+      // Knob
+      ctx.fillStyle = '#d4af37';
+      ctx.beginPath();
+      ctx.arc(x + w - 12, y + h/2, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     function drawBed() {
-      // Headboard
       ctx.fillStyle = '#4a2c17';
       ctx.fillRect(28, 155, 18, 120);
-
-      // Frame / mattress base
       ctx.fillStyle = '#6b3e26';
       ctx.fillRect(40, 195, 165, 70);
-
-      // Blanket
       ctx.fillStyle = '#c45c26';
       ctx.fillRect(55, 200, 140, 55);
-
-      // Pillow
       ctx.fillStyle = '#e8d5b7';
       ctx.fillRect(58, 205, 48, 22);
-
-      // Legs
       ctx.fillStyle = '#3d2415';
       ctx.fillRect(42, 260, 14, 18);
       ctx.fillRect(180, 260, 14, 18);
     }
 
     function drawDresser() {
-      // Body
       ctx.fillStyle = '#5c4033';
-      ctx.fillRect(465, 150, 135, 130);
-
-      // Top
+      ctx.fillRect(420, 150, 120, 130);
       ctx.fillStyle = '#7a5c45';
-      ctx.fillRect(460, 145, 145, 12);
-
-      // Drawers
+      ctx.fillRect(415, 145, 130, 12);
       ctx.fillStyle = '#4a3328';
-      ctx.fillRect(475, 170, 115, 28);
-      ctx.fillRect(475, 210, 115, 28);
-      ctx.fillRect(475, 250, 115, 22);
-
-      // Handles
+      ctx.fillRect(430, 170, 100, 28);
+      ctx.fillRect(430, 210, 100, 28);
+      ctx.fillRect(430, 250, 100, 22);
       ctx.fillStyle = '#d4af37';
-      ctx.fillRect(520, 180, 20, 7);
-      ctx.fillRect(520, 220, 20, 7);
-      ctx.fillRect(520, 257, 20, 7);
+      ctx.fillRect(470, 180, 18, 7);
+      ctx.fillRect(470, 220, 18, 7);
+      ctx.fillRect(470, 257, 18, 7);
     }
 
-    function drawPlant() {
-      // Pot
-      ctx.fillStyle = '#a0522d';
-      ctx.beginPath();
-      ctx.moveTo(305, 225);
-      ctx.lineTo(335, 225);
-      ctx.lineTo(330, 265);
-      ctx.lineTo(310, 265);
-      ctx.closePath();
-      ctx.fill();
-
-      // Rim
-      ctx.fillStyle = '#8b4513';
-      ctx.fillRect(303, 220, 34, 8);
-
-      // Leaves
-      ctx.fillStyle = '#228b22';
-      ctx.beginPath();
-      ctx.ellipse(320, 195, 20, 26, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(305, 205, 13, 17, -0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(335, 205, 13, 17, 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    function draw() {
-      // Floor
+    // ===== ROOM DRAWERS =====
+    function drawRoom() {
+      // Floor + wall
       ctx.fillStyle = '#3d2b1f';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Back wall
       ctx.fillStyle = '#5c4033';
       ctx.fillRect(0, 0, canvas.width, 250);
 
-      // Floor boards
       ctx.strokeStyle = '#2a1a10';
       ctx.lineWidth = 2;
       for (let y = 250; y < canvas.height; y += 24) {
@@ -220,24 +246,171 @@
         ctx.stroke();
       }
 
-      // Furniture
       drawBed();
       drawDresser();
-      drawPlant();
 
+      // Door to hallway
+      drawDoor(560, 140, 60, 140);
+    }
+
+    function drawHallway() {
+      // Floor
+      ctx.fillStyle = '#2c241b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Walls
+      ctx.fillStyle = '#4a3b2f';
+      ctx.fillRect(0, 0, canvas.width, 250);
+
+      // Floor boards
+      ctx.strokeStyle = '#1a140e';
+      ctx.lineWidth = 2;
+      for (let y = 250; y < canvas.height; y += 22) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Side walls for depth
+      ctx.fillStyle = '#3a2e24';
+      ctx.fillRect(0, 0, 30, canvas.height);
+      ctx.fillRect(610, 0, 30, canvas.height);
+
+      // Door back to room
+      drawDoor(20, 140, 55, 140);
+
+      // Door to outside
+      drawDoor(560, 140, 60, 140);
+
+      // Kitchen doorway (arch style)
+      ctx.fillStyle = '#2a2118';
+      ctx.fillRect(275, 95, 90, 60);
+      ctx.fillStyle = '#1a140e';
+      ctx.fillRect(285, 105, 70, 50);
+
+      // Label hints
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = '11px Courier New';
+      ctx.fillText('Kitchen', 292, 90);
+      ctx.fillText('Outside', 565, 130);
+    }
+
+    function drawKitchen() {
+      // White tile floor
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Tile grid
+      ctx.strokeStyle = '#c8c8c8';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Back wall
+      ctx.fillStyle = '#f5f5f5';
+      ctx.fillRect(0, 0, canvas.width, 220);
+
+      // Counter
+      ctx.fillStyle = '#d0d0d0';
+      ctx.fillRect(40, 200, 560, 50);
+      ctx.fillStyle = '#b0b0b0';
+      ctx.fillRect(40, 245, 560, 18);
+
+      // Stove
+      ctx.fillStyle = '#333';
+      ctx.fillRect(80, 175, 110, 30);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(90, 160, 40, 20);
+      ctx.fillRect(140, 160, 40, 20);
+      // Burners
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(110, 170, 12, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(160, 170, 12, 0, Math.PI*2); ctx.fill();
+
+      // Sink
+      ctx.fillStyle = '#aaa';
+      ctx.fillRect(280, 185, 90, 25);
+      ctx.fillStyle = '#888';
+      ctx.fillRect(290, 190, 70, 15);
+      // Faucet
+      ctx.fillStyle = '#666';
+      ctx.fillRect(320, 170, 10, 20);
+      ctx.fillRect(310, 168, 30, 6);
+
+      // Cupboards
+      ctx.fillStyle = '#ddd';
+      ctx.fillRect(420, 80, 80, 90);
+      ctx.fillRect(510, 80, 80, 90);
+      ctx.strokeStyle = '#bbb';
+      ctx.strokeRect(420, 80, 80, 90);
+      ctx.strokeRect(510, 80, 80, 90);
+      // Handles
+      ctx.fillStyle = '#888';
+      ctx.fillRect(455, 120, 8, 15);
+      ctx.fillRect(545, 120, 8, 15);
+
+      // Door back to hallway (bottom)
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(280, 400, 80, 50);
+      ctx.fillStyle = '#d4af37';
+      ctx.beginPath();
+      ctx.arc(340, 425, 5, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    function drawOutside() {
+      // Simple placeholder
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Sky gradient feel
+      ctx.fillStyle = '#0d1b2a';
+      ctx.fillRect(0, 0, canvas.width, 200);
+
+      ctx.fillStyle = '#2d4a3e';
+      ctx.fillRect(0, 280, canvas.width, 200);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '18px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Outside City - Coming Soon', canvas.width/2, 230);
+      ctx.font = '13px Courier New';
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText('Click the door to go back', canvas.width/2, 260);
+      ctx.textAlign = 'left';
+
+      drawDoor(20, 140, 55, 140);
+    }
+
+    // ===== MAIN DRAW =====
+    function draw() {
+      if (currentRoom === 'room') drawRoom();
+      else if (currentRoom === 'hallway') drawHallway();
+      else if (currentRoom === 'kitchen') drawKitchen();
+      else if (currentRoom === 'outside') drawOutside();
+
+      // Draw Ani
       const drawW = frameW * ani.scale;
       const drawH = frameH * ani.scale;
 
-      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
       ctx.ellipse(ani.x + drawW / 2, ani.y + drawH - 6, drawW * 0.30, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Ani
       if (sheet.complete && sheet.naturalWidth > 0) {
         const clean = getCleanFrame(ani.frame);
-
         ctx.save();
         if (ani.facing === -1) {
           ctx.translate(ani.x + drawW, ani.y);

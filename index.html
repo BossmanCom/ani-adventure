@@ -41,7 +41,7 @@
     const ctx = canvas.getContext('2d');
 
     const sheet = new Image();
-    sheet.src = 'ani_sheet.png?' + Date.now(); // cache buster
+    sheet.src = 'ani_sheet.png?' + Date.now();
 
     let frameW = 512;
     let frameH = 512;
@@ -70,7 +70,6 @@
       frameH = sheet.height / 2;
       off.width = frameW;
       off.height = frameH;
-      console.log('Sheet loaded - furniture version');
       requestAnimationFrame(loop);
     };
 
@@ -129,6 +128,79 @@
       }
     }
 
+    function drawBed() {
+      // Headboard
+      ctx.fillStyle = '#4a2c17';
+      ctx.fillRect(28, 155, 18, 120);
+
+      // Frame / mattress base
+      ctx.fillStyle = '#6b3e26';
+      ctx.fillRect(40, 195, 165, 70);
+
+      // Blanket
+      ctx.fillStyle = '#c45c26';
+      ctx.fillRect(55, 200, 140, 55);
+
+      // Pillow
+      ctx.fillStyle = '#e8d5b7';
+      ctx.fillRect(58, 205, 48, 22);
+
+      // Legs
+      ctx.fillStyle = '#3d2415';
+      ctx.fillRect(42, 260, 14, 18);
+      ctx.fillRect(180, 260, 14, 18);
+    }
+
+    function drawDresser() {
+      // Body
+      ctx.fillStyle = '#5c4033';
+      ctx.fillRect(465, 150, 135, 130);
+
+      // Top
+      ctx.fillStyle = '#7a5c45';
+      ctx.fillRect(460, 145, 145, 12);
+
+      // Drawers
+      ctx.fillStyle = '#4a3328';
+      ctx.fillRect(475, 170, 115, 28);
+      ctx.fillRect(475, 210, 115, 28);
+      ctx.fillRect(475, 250, 115, 22);
+
+      // Handles
+      ctx.fillStyle = '#d4af37';
+      ctx.fillRect(520, 180, 20, 7);
+      ctx.fillRect(520, 220, 20, 7);
+      ctx.fillRect(520, 257, 20, 7);
+    }
+
+    function drawPlant() {
+      // Pot
+      ctx.fillStyle = '#a0522d';
+      ctx.beginPath();
+      ctx.moveTo(305, 225);
+      ctx.lineTo(335, 225);
+      ctx.lineTo(330, 265);
+      ctx.lineTo(310, 265);
+      ctx.closePath();
+      ctx.fill();
+
+      // Rim
+      ctx.fillStyle = '#8b4513';
+      ctx.fillRect(303, 220, 34, 8);
+
+      // Leaves
+      ctx.fillStyle = '#228b22';
+      ctx.beginPath();
+      ctx.ellipse(320, 195, 20, 26, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(305, 205, 13, 17, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(335, 205, 13, 17, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     function draw() {
       // Floor
       ctx.fillStyle = '#3d2b1f';
@@ -148,37 +220,21 @@
         ctx.stroke();
       }
 
-      // ===== BRIGHT TEST FURNITURE =====
-      // BED (left) - bright red so we can see it
-      ctx.fillStyle = '#ff4444';
-      ctx.fillRect(40, 180, 160, 80);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '14px Courier New';
-      ctx.fillText('BED', 95, 225);
+      // Furniture
+      drawBed();
+      drawDresser();
+      drawPlant();
 
-      // DRESSER (right) - bright blue
-      ctx.fillStyle = '#4488ff';
-      ctx.fillRect(460, 150, 140, 120);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText('DRESSER', 490, 215);
-
-      // PLANT (middle) - bright green
-      ctx.fillStyle = '#44ff44';
-      ctx.beginPath();
-      ctx.arc(320, 210, 30, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#000000';
-      ctx.fillText('PLANT', 300, 215);
-
-      // Ani
       const drawW = frameW * ani.scale;
       const drawH = frameH * ani.scale;
 
+      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
       ctx.ellipse(ani.x + drawW / 2, ani.y + drawH - 6, drawW * 0.30, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      // Ani
       if (sheet.complete && sheet.naturalWidth > 0) {
         const clean = getCleanFrame(ani.frame);
 

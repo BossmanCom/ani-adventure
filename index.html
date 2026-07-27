@@ -40,9 +40,9 @@
     const ctx = canvas.getContext('2d');
     const roomLabel = document.getElementById('roomLabel');
 
+    // === ANI ===
     const sheet = new Image();
     sheet.src = 'ani_sheet.png?' + Date.now();
-
     let frameW = 512, frameH = 512;
     const IDLE_FRAME = 2, WALK_FRAMES = [0, 3];
     const off = document.createElement('canvas');
@@ -51,6 +51,17 @@
     const ani = {
       x: 270, y: 160, targetX: 270, targetY: 160,
       speed: 2.8, facing: 1, frame: IDLE_FRAME, animTimer: 0, scale: 0.36
+    };
+
+    // === NEKO (black catgirl) ===
+    const nekoSheet = new Image();
+    nekoSheet.src = 'neko_sheet.png?' + Date.now();
+    let nekoFrameW = 466, nekoFrameH = 768;
+    const NEKO_IDLE = 1, NEKO_WALK = [0, 2];
+
+    const neko = {
+      x: 180, y: 170, targetX: 180, targetY: 170,
+      speed: 2.5, facing: 1, frame: NEKO_IDLE, animTimer: 0, scale: 0.28
     };
 
     let currentRoom = 'room';
@@ -79,7 +90,6 @@
           { x: 195, y: 194, w: 50, h: 70, target: 'weaponStore', spawnX: 120, spawnY: 220 },
           { x: 355, y: 194, w: 50, h: 70, target: 'clothingStore', spawnX: 120, spawnY: 220 },
           { x: 525, y: 194, w: 50, h: 70, target: 'bar', spawnX: 100, spawnY: 220 },
-          // Right side exit to Garage Street
           { x: 600, y: 180, w: 40, h: 100, target: 'garageStreet', spawnX: 60, spawnY: 200 }
         ]
       },
@@ -115,6 +125,11 @@
       requestAnimationFrame(loop);
     };
 
+    nekoSheet.onload = () => {
+      nekoFrameW = Math.floor(nekoSheet.width / 3);
+      nekoFrameH = nekoSheet.height;
+    };
+
     function getCleanFrame(frameIndex) {
       const col = frameIndex % 2, row = Math.floor(frameIndex / 2);
       offCtx.clearRect(0, 0, frameW, frameH);
@@ -132,6 +147,10 @@
       currentRoom = target;
       ani.x = spawnX; ani.y = spawnY;
       ani.targetX = spawnX; ani.targetY = spawnY;
+      neko.x = spawnX - 90;
+      neko.y = spawnY + 10;
+      neko.targetX = neko.x;
+      neko.targetY = neko.y;
       roomLabel.textContent = rooms[currentRoom].name;
     }
 
@@ -166,6 +185,23 @@
       } else {
         ani.frame = IDLE_FRAME;
         ani.x = ani.targetX; ani.y = ani.targetY;
+      }
+
+      const ndx = (ani.x - 85) - neko.x;
+      const ndy = (ani.y + 8) - neko.y;
+      const ndist = Math.sqrt(ndx*ndx + ndy*ndy);
+      if (ndist > 35) {
+        neko.x += (ndx / ndist) * neko.speed;
+        neko.y += (ndy / ndist) * neko.speed;
+        if (ndx > 0.5) neko.facing = 1;
+        if (ndx < -0.5) neko.facing = -1;
+        neko.animTimer++;
+        if (neko.animTimer > 14) {
+          neko.animTimer = 0;
+          neko.frame = (neko.frame === NEKO_WALK[0]) ? NEKO_WALK[1] : NEKO_WALK[0];
+        }
+      } else {
+        neko.frame = NEKO_IDLE;
       }
     }
 
@@ -350,7 +386,6 @@
         const sx = x + 10 + i * (w / 4);
         ctx.fillRect(sx, y, 6, h * (0.4 + (i%3)*0.15));
       }
-      // Jagged roof
       ctx.fillStyle = shadeColor('#6b6558', -25);
       ctx.beginPath();
       ctx.moveTo(x, y);
@@ -362,7 +397,6 @@
       ctx.lineTo(x + w, y);
       ctx.closePath(); ctx.fill();
 
-      // Windows
       const winW = 16, winH = 20, padX = 14, padY = 18;
       let boardToggle = 0;
       for (let wy = y + padY + 8; wy < y + h - winH; wy += winH + padY) {
@@ -386,7 +420,6 @@
           boardToggle++;
         }
       }
-      // Debris
       ctx.fillStyle = '#5a5548';
       ctx.beginPath(); ctx.ellipse(x + w*0.15, groundY, 20, 7, 0, 0, Math.PI*2); ctx.fill();
     }
@@ -418,12 +451,10 @@
         }
       }
 
-      // PARKING sign
       ctx.fillStyle = '#2a2a26'; ctx.fillRect(x + w/2 - 55, y - 22, 110, 18);
       ctx.fillStyle = '#e8c94a'; ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center';
       ctx.fillText('PARKING', x + w/2, y - 8); ctx.textAlign = 'left';
 
-      // Entrance ramp
       ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x + w - 85, groundY - 80, 75, 80);
       ctx.strokeStyle = '#5a5a52'; ctx.lineWidth = 3;
       ctx.strokeRect(x + w - 85, groundY - 80, 75, 80);
@@ -496,7 +527,6 @@
       drawClothingStore(310, groundY, 140, H*0.34);
       drawBarShop(470, groundY, 140, H*0.36);
       drawDoor(55, 190, 70, 90);
-      // Right exit arrow
       ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '12px Courier New';
       ctx.fillText('◄ Hallway', 50, 180);
       ctx.fillText('Garage ►', 560, 170);
@@ -504,30 +534,20 @@
 
     function drawGarageStreet() {
       const W = canvas.width, H = canvas.height, groundY = H * 0.55;
-
-      // Sky (slightly darker)
       const sky = ctx.createLinearGradient(0, 0, 0, groundY);
       sky.addColorStop(0, '#5a6b8a'); sky.addColorStop(1, '#a89aa0');
       ctx.fillStyle = sky; ctx.fillRect(0, 0, W, groundY);
-
-      // Sidewalk
       ctx.fillStyle = '#8f8f88'; ctx.fillRect(0, groundY, W, H*0.23);
       ctx.strokeStyle = '#727268'; ctx.lineWidth = 2;
       for (let x=0; x<W; x+=60) {
         ctx.beginPath(); ctx.moveTo(x, groundY); ctx.lineTo(x, H*0.78); ctx.stroke();
       }
-
-      // Road
       ctx.fillStyle = '#3a3a42'; ctx.fillRect(0, H*0.78, W, H*0.22);
       ctx.fillStyle = '#d9cb6a';
       for (let x=10; x<W; x+=50) ctx.fillRect(x, H*0.78+(H*0.22)/2-3, 30, 6);
-
-      // Broken buildings + garage
       drawBrokenBuilding(20, groundY, 140, H*0.30);
       drawBrokenBuilding(180, groundY, 120, H*0.24);
       drawParkingGarage(380, groundY, 240, H*0.40);
-
-      // Back to city
       drawShopDoor(20, 185, '#5a3b28');
       ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
       ctx.fillText('◄ City', 18, 175);
@@ -537,25 +557,19 @@
       const W = canvas.width, H = canvas.height;
       ctx.fillStyle = '#3a3a36'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#2a2a28'; ctx.fillRect(0, H*0.75, W, H*0.25);
-
-      // Pillars
       ctx.fillStyle = '#5a5a52';
       for (let x = 80; x < W; x += 140) {
         ctx.fillRect(x, 40, 30, H*0.75 - 40);
       }
-
-      // Ceiling beams
       ctx.fillStyle = '#4a4a44';
       for (let y = 60; y < H*0.7; y += 50) {
         ctx.fillRect(0, y, W, 8);
       }
-
       ctx.fillStyle = '#e8c94a'; ctx.font = '16px Courier New'; ctx.textAlign = 'center';
       ctx.fillText('Parking Garage', W/2, 40);
       ctx.font = '12px Courier New'; ctx.fillStyle = '#aaa';
       ctx.fillText('(Interior coming soon)', W/2, 220);
       ctx.textAlign = 'left';
-
       drawDoor(280, 380, 80, 70);
     }
 
@@ -624,6 +638,7 @@
       else if (currentRoom === 'clothingStore') drawClothingStoreInterior();
       else if (currentRoom === 'bar') drawBarInterior();
 
+      // Draw Ani
       const drawW = frameW * ani.scale, drawH = frameH * ani.scale;
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
@@ -638,6 +653,25 @@
           ctx.drawImage(clean, 0, 0, frameW, frameH, 0, 0, drawW, drawH);
         } else {
           ctx.drawImage(clean, 0, 0, frameW, frameH, ani.x, ani.y, drawW, drawH);
+        }
+        ctx.restore();
+      }
+
+      // Draw Neko
+      if (nekoSheet.complete && nekoSheet.naturalWidth > 0) {
+        const nw = nekoFrameW * neko.scale;
+        const nh = nekoFrameH * neko.scale;
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(neko.x + nw/2, neko.y + nh - 4, nw*0.28, 8, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.save();
+        if (neko.facing === -1) {
+          ctx.translate(neko.x + nw, neko.y); ctx.scale(-1, 1);
+          ctx.drawImage(nekoSheet, neko.frame * nekoFrameW, 0, nekoFrameW, nekoFrameH, 0, 0, nw, nh);
+        } else {
+          ctx.drawImage(nekoSheet, neko.frame * nekoFrameW, 0, nekoFrameW, nekoFrameH, neko.x, neko.y, nw, nh);
         }
         ctx.restore();
       }

@@ -67,6 +67,10 @@
     };
 
     let currentRoom = 'room';
+    let activeMenu = null; // null | 'map'
+
+    // Clickable van hitbox in the clearing
+    const vanHitbox = { x: 180, y: 340, w: 180, h: 70 };
 
     const rooms = {
       room: {
@@ -120,9 +124,7 @@
       parkingGarageLevel2: {
         name: 'Parking Garage - Level 2',
         doors: [
-          // Down door (left)
           { x: 20, y: 290, w: 50, h: 70, target: 'parkingGarage', spawnX: 200, spawnY: 280 },
-          // Ramp up trigger (right side)
           { x: 380, y: 150, w: 240, h: 220, target: 'parkingGarageLevel3', spawnX: 300, spawnY: 300 }
         ]
       },
@@ -201,6 +203,7 @@
 
     function changeRoom(target, spawnX, spawnY) {
       currentRoom = target;
+      activeMenu = null;
       ani.x = spawnX; ani.y = spawnY;
       ani.targetX = spawnX; ani.targetY = spawnY;
       neko.x = spawnX - 90;
@@ -215,17 +218,47 @@
       const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
       const my = (e.clientY - rect.top) * (canvas.height / rect.height);
 
+      // If a menu is open, handle menu clicks first
+      if (activeMenu === 'map') {
+        // Close button (top right of map panel)
+        if (mx >= 520 && mx <= 555 && my >= 55 && my <= 90) {
+          activeMenu = null;
+          return;
+        }
+        // Clicking outside the map panel also closes it
+        if (mx < 80 || mx > 560 || my < 50 || my > 430) {
+          activeMenu = null;
+          return;
+        }
+        // Future: clickable map locations go here
+        return;
+      }
+
+      // Van click in clearing
+      if (currentRoom === 'clearing') {
+        if (mx >= vanHitbox.x && mx <= vanHitbox.x + vanHitbox.w &&
+            my >= vanHitbox.y && my <= vanHitbox.y + vanHitbox.h) {
+          activeMenu = 'map';
+          return;
+        }
+      }
+
+      // Normal door clicks
       for (const d of rooms[currentRoom].doors) {
         if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
           changeRoom(d.target, d.spawnX, d.spawnY);
           return;
         }
       }
+
+      // Walk to clicked position
       ani.targetX = mx - (frameW * ani.scale) / 2;
       ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 300);
     });
 
     function update() {
+      if (activeMenu) return; // freeze movement while menu is open
+
       const dx = ani.targetX - ani.x, dy = ani.targetY - ani.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
       if (dist > 3) {
@@ -1007,6 +1040,11 @@
 
       drawFoxCatVan(180, H * 0.85);
 
+      // Hint text near the van
+      ctx.fillStyle = 'rgba(232,201,74,0.7)';
+      ctx.font = '11px Courier New';
+      ctx.fillText('Click van for Map', 195, H * 0.85 + 25);
+
       drawShopDoor(20, H * 0.5 - 40, '#2a2a26');
       ctx.fillStyle = '#2a2a26';
       ctx.font = '12px Courier New';
@@ -1102,6 +1140,70 @@
       ctx.lineTo(cx, cy + 8);
       ctx.closePath();
       ctx.fill();
+    }
+
+    // ===== MAP POPUP =====
+    function drawMapMenu() {
+      // Dark overlay
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Map panel
+      ctx.fillStyle = '#2a2a26';
+      ctx.fillRect(80, 50, 480, 380);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(80, 50, 480, 380);
+
+      // Title
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 22px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('WHISKERS — MAP', 320, 90);
+
+      // Close button
+      ctx.fillStyle = '#5a3a3a';
+      ctx.fillRect(520, 55, 35, 35);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(520, 55, 35, 35);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 20px Courier New';
+      ctx.fillText('X', 537, 80);
+
+      // Placeholder locations
+      ctx.fillStyle = '#3a3a34';
+      ctx.fillRect(120, 130, 180, 100);
+      ctx.fillRect(340, 130, 180, 100);
+      ctx.fillRect(120, 260, 180, 100);
+      ctx.fillRect(340, 260, 180, 100);
+
+      ctx.strokeStyle = '#6a6a60';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(120, 130, 180, 100);
+      ctx.strokeRect(340, 130, 180, 100);
+      ctx.strokeRect(120, 260, 180, 100);
+      ctx.strokeRect(340, 260, 180, 100);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '14px Courier New';
+      ctx.fillText('City Street', 210, 185);
+      ctx.fillText('(Current Area)', 210, 205);
+
+      ctx.fillText('Garage District', 430, 185);
+      ctx.fillText('(Unlocked)', 430, 205);
+
+      ctx.fillText('???', 210, 315);
+      ctx.fillText('(Locked)', 210, 335);
+
+      ctx.fillText('???', 430, 315);
+      ctx.fillText('(Locked)', 430, 335);
+
+      ctx.fillStyle = '#888';
+      ctx.font = '12px Courier New';
+      ctx.fillText('More locations coming soon...', 320, 400);
+
+      ctx.textAlign = 'left';
     }
 
     // ===== ROOMS =====
@@ -1250,7 +1352,6 @@
       ctx.fillText('◄ Street', 5, H * 0.75 - 78);
     }
 
-    // ===== DETAILED LEVEL 2 =====
     function drawParkingGarageLevel2() {
       const W = canvas.width;
       const H = canvas.height;
@@ -1261,27 +1362,22 @@
       ctx.fillStyle = wallGrad;
       ctx.fillRect(0, 0, W, H * 0.75);
 
-      // Lighter stains
       ctx.fillStyle = 'rgba(30,35,25,0.12)';
       for (let i = 0; i < 4; i++) {
         const sx = 60 + i * (W / 4);
         ctx.fillRect(sx, 0, 4, H * 0.25);
       }
 
-      // Ceiling beams
       ctx.fillStyle = '#3f3f38';
       for (let x = 40; x < W; x += 160) {
         ctx.fillRect(x, 0, 24, H * 0.12);
       }
 
-      // Big central pillar
       drawBigPillar(W * 0.42, H * 0.1, H * 0.65);
 
-      // Floor
       ctx.fillStyle = '#78786e';
       ctx.fillRect(0, H * 0.75, W, H * 0.25);
 
-      // Parking lines
       ctx.strokeStyle = 'rgba(232,201,74,0.3)';
       ctx.lineWidth = 3;
       for (let x = 30; x < W; x += 130) {
@@ -1291,17 +1387,12 @@
         ctx.stroke();
       }
 
-      // Light dust
       ctx.fillStyle = 'rgba(40,45,35,0.15)';
       drawPuddle(550, H * 0.9, 26, 8);
 
-      // Black car (left)
       drawParkedCarBlack(90, H * 0.88);
-
-      // Big ramp up (right)
       drawBigRampUp(W - 260, H * 0.3, 240, H * 0.65);
 
-      // Down door
       drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
       ctx.fillStyle = '#e8c94a';
       ctx.font = '12px Courier New';
@@ -1434,6 +1525,11 @@
           ctx.drawImage(cleanNeko, 0, 0, nekoFrameW, nekoFrameH, neko.x, neko.y, nw, nh);
         }
         ctx.restore();
+      }
+
+      // Draw menu on top if open
+      if (activeMenu === 'map') {
+        drawMapMenu();
       }
     }
 

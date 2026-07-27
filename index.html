@@ -105,24 +105,39 @@
       parkingGarage: {
         name: 'Parking Garage - Ground',
         doors: [
-          // Exit back to Garage Street (left)
           { x: 20, y: 290, w: 50, h: 70, target: 'garageStreet', spawnX: 540, spawnY: 210 },
-          // Stairwell door (right side)
-          { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 200, spawnY: 280 },
-          // Car ramp clickable zone (middle, leads to Level 2)
+          { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 140, spawnY: 350 },
           { x: 160, y: 250, w: 140, h: 110, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 300 }
         ]
       },
       stairwell: {
         name: 'Stairwell',
         doors: [
-          { x: 100, y: 300, w: 80, h: 80, target: 'parkingGarage', spawnX: 500, spawnY: 280 }
+          // Bottom door back to ground garage
+          { x: 100, y: 370, w: 50, h: 70, target: 'parkingGarage', spawnX: 500, spawnY: 280 },
+          // Top door to top floor
+          { x: 420, y: 80, w: 50, h: 70, target: 'garageTopFloor', spawnX: 500, spawnY: 280 }
         ]
       },
       parkingGarageLevel2: {
         name: 'Parking Garage - Level 2',
         doors: [
           { x: 50, y: 300, w: 80, h: 80, target: 'parkingGarage', spawnX: 80, spawnY: 280 }
+        ]
+      },
+      garageTopFloor: {
+        name: 'Parking Garage - Top Floor',
+        doors: [
+          // Stairwell door (right)
+          { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 430, spawnY: 120 },
+          // Outside door (left)
+          { x: 20, y: 290, w: 50, h: 70, target: 'clearing', spawnX: 100, spawnY: 300 }
+        ]
+      },
+      clearing: {
+        name: 'Outside Clearing',
+        doors: [
+          { x: 20, y: 200, w: 50, h: 70, target: 'garageTopFloor', spawnX: 80, spawnY: 280 }
         ]
       },
       weaponStore: {
@@ -536,22 +551,17 @@
       ctx.fill();
     }
 
-    // Bigger parked car
     function drawParkedCar(x, groundY) {
       const bodyColor = '#8a3a3a';
-      const scale = 1.35; // bigger overall
 
-      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
       ctx.ellipse(x + 70, groundY + 5, 85, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Lower body
       ctx.fillStyle = bodyColor;
       ctx.fillRect(x, groundY - 34, 145, 28);
 
-      // Cabin/roof
       ctx.beginPath();
       ctx.moveTo(x + 18, groundY - 34);
       ctx.lineTo(x + 35, groundY - 60);
@@ -560,7 +570,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // Windows
       ctx.fillStyle = '#cfe0e8';
       ctx.beginPath();
       ctx.moveTo(x + 38, groundY - 36);
@@ -577,11 +586,9 @@
       ctx.closePath();
       ctx.fill();
 
-      // Bumper
       ctx.fillStyle = shadeColor(bodyColor, -30);
       ctx.fillRect(x, groundY - 8, 145, 5);
 
-      // Wheels (bigger)
       ctx.fillStyle = '#1a1a1a';
       ctx.beginPath(); ctx.arc(x + 32, groundY, 13, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(x + 112, groundY, 13, 0, Math.PI * 2); ctx.fill();
@@ -589,24 +596,20 @@
       ctx.beginPath(); ctx.arc(x + 32, groundY, 5, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(x + 112, groundY, 5, 0, Math.PI * 2); ctx.fill();
 
-      // Headlight
       ctx.fillStyle = '#e8d9a0';
       ctx.fillRect(x + 132, groundY - 26, 8, 10);
     }
 
     function drawStairwell(x, groundY, w, h) {
       const y = groundY - h;
-
       ctx.fillStyle = '#4a4a42';
       ctx.fillRect(x, y, w, h);
-
       ctx.fillStyle = '#3a3a34';
       for (let i = 0; i < 6; i++) {
         ctx.fillRect(x + w - 50, groundY - i * 14 - 14, 40, 10);
       }
       ctx.fillStyle = '#2f2f2a';
       ctx.fillRect(x + w - 55, y, 10, h);
-
       ctx.fillStyle = '#2a2a26';
       ctx.fillRect(x + 20, y + 20, 90, 24);
       ctx.fillStyle = '#e8c94a';
@@ -614,13 +617,10 @@
       ctx.textAlign = 'center';
       ctx.fillText('STAIRS', x + 65, y + 37);
       ctx.textAlign = 'left';
-
       drawShopDoor(x + 20, groundY - 70, '#2a2a26');
     }
 
-    // Proper concrete car ramp (no arrows)
     function drawCarRamp(x, groundY) {
-      // Ramp base / side wall left
       ctx.fillStyle = '#5a5a52';
       ctx.beginPath();
       ctx.moveTo(x, groundY);
@@ -630,7 +630,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // Main ramp surface (inclined)
       ctx.fillStyle = '#6a6a62';
       ctx.beginPath();
       ctx.moveTo(x + 20, groundY);
@@ -640,7 +639,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // Right side wall of ramp
       ctx.fillStyle = '#4a4a44';
       ctx.beginPath();
       ctx.moveTo(x + 160, groundY);
@@ -650,7 +648,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // Yellow dashed center line on the ramp
       ctx.strokeStyle = 'rgba(232,201,74,0.7)';
       ctx.lineWidth = 3;
       ctx.setLineDash([12, 10]);
@@ -660,14 +657,332 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Top edge of ramp (into the upper level)
       ctx.fillStyle = '#3f3f38';
       ctx.fillRect(x + 30, groundY - 100, 160, 8);
 
-      // Small "UP" text on the side (subtle)
       ctx.fillStyle = 'rgba(232,201,74,0.6)';
       ctx.font = 'bold 11px Courier New';
       ctx.fillText('UP', x + 8, groundY - 50);
+    }
+
+    // ===== NEW DETAILED STAIRWELL =====
+    function drawStairwellInterior() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Concrete walls
+      ctx.fillStyle = '#5c5c54';
+      ctx.fillRect(0, 0, W, H);
+
+      // Damp stains
+      ctx.fillStyle = 'rgba(30,35,25,0.2)';
+      for (let i = 0; i < 4; i++) {
+        const sx = 40 + i * (W / 4);
+        ctx.fillRect(sx, 0, 5, H * 0.4);
+      }
+
+      // Staircase
+      const stepCount = 10;
+      const stepW = W * 0.5;
+      const stepH = (H * 0.65) / stepCount;
+      const baseX = W * 0.25;
+      const baseY = H * 0.92;
+
+      for (let i = 0; i < stepCount; i++) {
+        const sx = baseX + i * 6;
+        const sy = baseY - i * stepH;
+        const sw = stepW - i * 12;
+
+        ctx.fillStyle = '#8a8a80';
+        ctx.fillRect(sx, sy - stepH, sw, stepH);
+        ctx.fillStyle = '#4a4a42';
+        ctx.fillRect(sx, sy - 6, sw, 6);
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillRect(sx, sy - stepH, sw, 3);
+      }
+
+      // Handrail
+      ctx.strokeStyle = '#3a3a34';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(baseX + stepW + 10, baseY);
+      ctx.lineTo(baseX + stepCount * 6 + (stepW - stepCount * 12) + 10, baseY - stepCount * stepH);
+      ctx.stroke();
+
+      ctx.lineWidth = 3;
+      for (let i = 0; i <= stepCount; i += 2) {
+        const px = baseX + i * 6 + stepW - i * 12 + 10;
+        const py = baseY - i * stepH;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px, py + 20);
+        ctx.stroke();
+      }
+
+      // Hanging light bulb
+      ctx.strokeStyle = '#2a2a26';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.5, 0);
+      ctx.lineTo(W * 0.5, 40);
+      ctx.stroke();
+      ctx.fillStyle = '#f2e6a0';
+      ctx.beginPath();
+      ctx.arc(W * 0.5, 48, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bottom door
+      drawShopDoor(baseX - 60, baseY - 70, '#2a2a26');
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = '12px Courier New';
+      ctx.fillText('◄ Garage', baseX - 75, baseY - 78);
+
+      // Top door
+      const topX = baseX + stepCount * 6 + (stepW - stepCount * 12) - 30;
+      const topY = baseY - stepCount * stepH;
+      drawShopDoor(topX, topY - 70, '#2a2a26');
+      ctx.fillStyle = '#e8c94a';
+      ctx.fillText('Top Floor ►', topX - 10, topY - 78);
+    }
+
+    // ===== TOP FLOOR =====
+    function drawGarageTopFloor() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
+      wallGrad.addColorStop(0, '#6a6a62');
+      wallGrad.addColorStop(1, '#54544c');
+      ctx.fillStyle = wallGrad;
+      ctx.fillRect(0, 0, W, H * 0.75);
+
+      ctx.fillStyle = 'rgba(30,35,25,0.2)';
+      for (let i = 0; i < 6; i++) {
+        const sx = 20 + i * (W / 6) + Math.sin(i) * 10;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx + 4, H * (0.3 + (i % 3) * 0.15));
+        ctx.lineTo(sx - 4, H * (0.3 + (i % 3) * 0.15));
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Open sky at top
+      ctx.fillStyle = '#8fa0b8';
+      ctx.fillRect(0, 0, W, H * 0.12);
+
+      ctx.fillStyle = '#3f3f38';
+      for (let x = 40; x < W; x += 160) {
+        ctx.fillRect(x, H * 0.12, 24, H * 0.05);
+      }
+
+      drawGaragePillar(180, H * 0.17, H * 0.58);
+      drawGaragePillar(480, H * 0.17, H * 0.58);
+
+      ctx.fillStyle = '#7a7a70';
+      ctx.fillRect(0, H * 0.75, W, H * 0.25);
+
+      ctx.fillStyle = 'rgba(40,45,35,0.3)';
+      drawPuddle(250, H * 0.85, 26, 8);
+      drawPuddle(560, H * 0.9, 20, 6);
+
+      ctx.strokeStyle = 'rgba(232,201,74,0.35)';
+      ctx.lineWidth = 3;
+      for (let x = 30; x < W; x += 130) {
+        ctx.beginPath();
+        ctx.moveTo(x, H * 0.78);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+
+      // Low retaining wall
+      ctx.fillStyle = '#5c5c54';
+      ctx.fillRect(0, H * 0.66, W, 10);
+
+      // Stairwell down (right)
+      drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
+
+      // Outside door (left)
+      drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = '12px Courier New';
+      ctx.fillText('Outside ►', 5, H * 0.75 - 78);
+    }
+
+    // ===== OUTSIDE CLEARING =====
+    function drawClearing() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Overcast sky
+      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+      sky.addColorStop(0, '#8f9aab');
+      sky.addColorStop(1, '#c4c2b8');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H * 0.5);
+
+      // Distant tree line
+      ctx.fillStyle = '#6a7a5a';
+      for (let x = 0; x < W; x += 40) {
+        const h = 20 + (x % 80 === 0 ? 10 : 0);
+        ctx.beginPath();
+        ctx.arc(x, H * 0.5, h, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Empty parking lot
+      ctx.fillStyle = '#4a4a48';
+      ctx.fillRect(0, H * 0.5, W * 0.65, H * 0.5);
+
+      // Faded lot lines
+      ctx.strokeStyle = 'rgba(232,201,74,0.3)';
+      ctx.lineWidth = 3;
+      for (let x = 20; x < W * 0.6; x += 90) {
+        ctx.beginPath();
+        ctx.moveTo(x, H * 0.55);
+        ctx.lineTo(x, H * 0.95);
+        ctx.stroke();
+      }
+
+      // Cracks
+      ctx.strokeStyle = 'rgba(20,20,18,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(80, H * 0.6);
+      ctx.lineTo(140, H * 0.72);
+      ctx.lineTo(110, H * 0.85);
+      ctx.stroke();
+
+      // Grass patches
+      ctx.fillStyle = '#7a8a5a';
+      drawPuddle(40, H * 0.52, 18, 6);
+      drawPuddle(W * 0.6 - 10, H * 0.8, 16, 5);
+
+      // Gravel rockway
+      ctx.fillStyle = '#9a9284';
+      ctx.fillRect(W * 0.65, H * 0.5, W * 0.35, H * 0.5);
+
+      ctx.fillStyle = '#7a7264';
+      for (let i = 0; i < 120; i++) {
+        const gx = W * 0.65 + Math.random() * (W * 0.35);
+        const gy = H * 0.5 + Math.random() * (H * 0.5);
+        ctx.fillRect(gx, gy, 2, 2);
+      }
+      ctx.fillStyle = '#b8b0a0';
+      for (let i = 0; i < 60; i++) {
+        const gx = W * 0.65 + Math.random() * (W * 0.35);
+        const gy = H * 0.5 + Math.random() * (H * 0.5);
+        ctx.fillRect(gx, gy, 3, 2);
+      }
+
+      ctx.strokeStyle = '#5a5548';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.65, H * 0.5);
+      ctx.lineTo(W * 0.65, H);
+      ctx.stroke();
+
+      // Fox + Cat van
+      drawFoxCatVan(180, H * 0.85);
+
+      // Door back to top floor
+      drawShopDoor(20, H * 0.5 - 40, '#2a2a26');
+      ctx.fillStyle = '#2a2a26';
+      ctx.font = '12px Courier New';
+      ctx.fillText('◄ Stairwell', 5, H * 0.5 - 44);
+    }
+
+    function drawFoxCatVan(x, groundY) {
+      const bodyColor = '#e8e2d0';
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x + 80, groundY + 4, 95, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = bodyColor;
+      ctx.fillRect(x, groundY - 60, 160, 50);
+
+      ctx.beginPath();
+      ctx.moveTo(x + 160, groundY - 60);
+      ctx.lineTo(x + 180, groundY - 40);
+      ctx.lineTo(x + 180, groundY - 10);
+      ctx.lineTo(x + 160, groundY - 10);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#cfe0e8';
+      ctx.beginPath();
+      ctx.moveTo(x + 163, groundY - 55);
+      ctx.lineTo(x + 176, groundY - 40);
+      ctx.lineTo(x + 176, groundY - 18);
+      ctx.lineTo(x + 163, groundY - 18);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#cfe0e8';
+      ctx.fillRect(x + 20, groundY - 55, 30, 18);
+      ctx.fillRect(x + 60, groundY - 55, 30, 18);
+
+      ctx.fillStyle = '#8a8a80';
+      ctx.fillRect(x, groundY - 10, 180, 6);
+
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(x + 35, groundY, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 140, groundY, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#9a9a92';
+      ctx.beginPath(); ctx.arc(x + 35, groundY, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 140, groundY, 5, 0, Math.PI * 2); ctx.fill();
+
+      // Fox face (left)
+      drawFaceDecal(x + 45, groundY - 40, '#d9803a', 'fox');
+      // Cat face (right)
+      drawFaceDecal(x + 110, groundY - 40, '#8a8a92', 'cat');
+    }
+
+    function drawFaceDecal(cx, cy, color, type) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      if (type === 'fox') {
+        ctx.moveTo(cx - 14, cy - 10);
+        ctx.lineTo(cx - 20, cy - 24);
+        ctx.lineTo(cx - 6, cy - 16);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx + 14, cy - 10);
+        ctx.lineTo(cx + 20, cy - 24);
+        ctx.lineTo(cx + 6, cy - 16);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.moveTo(cx - 12, cy - 12);
+        ctx.lineTo(cx - 16, cy - 22);
+        ctx.lineTo(cx - 4, cy - 16);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx + 12, cy - 12);
+        ctx.lineTo(cx + 16, cy - 22);
+        ctx.lineTo(cx + 4, cy - 16);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(cx - 6, cy - 2, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 6, cy - 2, 2, 0, Math.PI * 2); ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, cy + 4);
+      ctx.lineTo(cx + 3, cy + 4);
+      ctx.lineTo(cx, cy + 8);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // ===== ROOMS =====
@@ -760,19 +1075,16 @@
       drawStreetSign(8, 155, '← CITY');
     }
 
-    // ===== DETAILED PARKING GARAGE INTERIOR =====
     function drawParkingGarageInterior() {
       const W = canvas.width;
       const H = canvas.height;
 
-      // Concrete back wall
       const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
       wallGrad.addColorStop(0, '#6a6a62');
       wallGrad.addColorStop(1, '#54544c');
       ctx.fillStyle = wallGrad;
       ctx.fillRect(0, 0, W, H * 0.75);
 
-      // Damp water stains
       ctx.fillStyle = 'rgba(30,35,25,0.2)';
       for (let i = 0; i < 6; i++) {
         const sx = 20 + i * (W / 6) + Math.sin(i) * 10;
@@ -784,27 +1096,22 @@
         ctx.fill();
       }
 
-      // Ceiling support beams
       ctx.fillStyle = '#3f3f38';
       for (let x = 40; x < W; x += 160) {
         ctx.fillRect(x, 0, 24, H * 0.12);
       }
 
-      // Grimy support pillars
       drawGaragePillar(180, H * 0.12, H * 0.63);
       drawGaragePillar(480, H * 0.12, H * 0.63);
 
-      // Concrete floor
       ctx.fillStyle = '#7a7a70';
       ctx.fillRect(0, H * 0.75, W, H * 0.25);
 
-      // Floor stains / puddles
       ctx.fillStyle = 'rgba(40,45,35,0.3)';
       drawPuddle(120, H * 0.88, 40, 12);
       drawPuddle(520, H * 0.92, 30, 9);
       drawPuddle(340, H * 0.8, 22, 7);
 
-      // Faded parking space lines
       ctx.strokeStyle = 'rgba(232,201,74,0.35)';
       ctx.lineWidth = 3;
       for (let x = 30; x < W; x += 130) {
@@ -814,38 +1121,14 @@
         ctx.stroke();
       }
 
-      // Bigger parked car (moved a bit right so it doesn't overlap ramp)
       drawParkedCar(340, H * 0.88);
-
-      // Proper car ramp in the middle-left (between exit and stairwell)
       drawCarRamp(140, H * 0.75);
-
-      // Stairwell (right end)
       drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
 
-      // Exit door back to street (left)
       drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
       ctx.fillStyle = '#e8c94a';
       ctx.font = '12px Courier New';
       ctx.fillText('◄ Street', 5, H * 0.75 - 78);
-    }
-
-    function drawStairwellInterior() {
-      const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#3a3a36'; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#2a2a28'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
-      ctx.fillStyle = '#4a4a42';
-      for (let i = 0; i < 8; i++) {
-        ctx.fillRect(180 + i * 30, H * 0.7 - i * 25, 140 - i * 8, 20);
-      }
-      ctx.fillStyle = '#e8c94a'; ctx.font = '16px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('Stairwell', W / 2, 50);
-      ctx.font = '12px Courier New'; ctx.fillStyle = '#aaa';
-      ctx.fillText('(More levels coming soon)', W / 2, 80);
-      ctx.textAlign = 'left';
-      drawShopDoor(100, 300, '#2a2a26');
-      ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Garage', 90, 290);
     }
 
     function drawParkingGarageLevel2() {
@@ -930,6 +1213,8 @@
       else if (currentRoom === 'parkingGarage') drawParkingGarageInterior();
       else if (currentRoom === 'stairwell') drawStairwellInterior();
       else if (currentRoom === 'parkingGarageLevel2') drawParkingGarageLevel2();
+      else if (currentRoom === 'garageTopFloor') drawGarageTopFloor();
+      else if (currentRoom === 'clearing') drawClearing();
       else if (currentRoom === 'weaponStore') drawWeaponStoreInterior();
       else if (currentRoom === 'clothingStore') drawClothingStoreInterior();
       else if (currentRoom === 'bar') drawBarInterior();

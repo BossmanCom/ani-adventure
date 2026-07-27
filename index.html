@@ -109,8 +109,8 @@
           { x: 20, y: 290, w: 50, h: 70, target: 'garageStreet', spawnX: 540, spawnY: 210 },
           // Stairwell door (right side)
           { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 200, spawnY: 280 },
-          // Ramp up trigger (left-center, floor/wall area)
-          { x: 50, y: 280, w: 70, h: 70, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 300 }
+          // Car ramp clickable zone (middle, leads to Level 2)
+          { x: 160, y: 250, w: 140, h: 110, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 300 }
         ]
       },
       stairwell: {
@@ -521,7 +521,6 @@
       ctx.fillStyle = 'rgba(20,20,15,0.25)';
       ctx.fillRect(x, y, 6, h);
       ctx.fillRect(x + 24, y, 6, h);
-      // chipped concrete at base
       ctx.fillStyle = '#4a4a42';
       ctx.beginPath();
       ctx.moveTo(x + 4, y + h);
@@ -537,78 +536,70 @@
       ctx.fill();
     }
 
+    // Bigger parked car
     function drawParkedCar(x, groundY) {
       const bodyColor = '#8a3a3a';
+      const scale = 1.35; // bigger overall
 
       // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
-      ctx.ellipse(x + 55, groundY + 4, 65, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 70, groundY + 5, 85, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // Lower body
       ctx.fillStyle = bodyColor;
-      ctx.fillRect(x, groundY - 26, 110, 22);
+      ctx.fillRect(x, groundY - 34, 145, 28);
 
       // Cabin/roof
       ctx.beginPath();
-      ctx.moveTo(x + 15, groundY - 26);
-      ctx.lineTo(x + 28, groundY - 46);
-      ctx.lineTo(x + 80, groundY - 46);
-      ctx.lineTo(x + 95, groundY - 26);
+      ctx.moveTo(x + 18, groundY - 34);
+      ctx.lineTo(x + 35, groundY - 60);
+      ctx.lineTo(x + 105, groundY - 60);
+      ctx.lineTo(x + 125, groundY - 34);
       ctx.closePath();
       ctx.fill();
 
       // Windows
       ctx.fillStyle = '#cfe0e8';
       ctx.beginPath();
-      ctx.moveTo(x + 30, groundY - 28);
-      ctx.lineTo(x + 36, groundY - 42);
-      ctx.lineTo(x + 58, groundY - 42);
-      ctx.lineTo(x + 58, groundY - 28);
+      ctx.moveTo(x + 38, groundY - 36);
+      ctx.lineTo(x + 46, groundY - 56);
+      ctx.lineTo(x + 72, groundY - 56);
+      ctx.lineTo(x + 72, groundY - 36);
       ctx.closePath();
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(x + 62, groundY - 28);
-      ctx.lineTo(x + 62, groundY - 42);
-      ctx.lineTo(x + 78, groundY - 42);
-      ctx.lineTo(x + 88, groundY - 28);
+      ctx.moveTo(x + 78, groundY - 36);
+      ctx.lineTo(x + 78, groundY - 56);
+      ctx.lineTo(x + 100, groundY - 56);
+      ctx.lineTo(x + 112, groundY - 36);
       ctx.closePath();
       ctx.fill();
 
-      // Bumper detail
+      // Bumper
       ctx.fillStyle = shadeColor(bodyColor, -30);
-      ctx.fillRect(x, groundY - 6, 110, 4);
+      ctx.fillRect(x, groundY - 8, 145, 5);
 
-      // Wheels
+      // Wheels (bigger)
       ctx.fillStyle = '#1a1a1a';
-      ctx.beginPath();
-      ctx.arc(x + 25, groundY, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x + 85, groundY, 10, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 32, groundY, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 112, groundY, 13, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#6a6a62';
-      ctx.beginPath();
-      ctx.arc(x + 25, groundY, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x + 85, groundY, 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 32, groundY, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 112, groundY, 5, 0, Math.PI * 2); ctx.fill();
 
       // Headlight
       ctx.fillStyle = '#e8d9a0';
-      ctx.fillRect(x + 100, groundY - 20, 6, 8);
+      ctx.fillRect(x + 132, groundY - 26, 8, 10);
     }
 
     function drawStairwell(x, groundY, w, h) {
       const y = groundY - h;
 
-      // Stairwell enclosure wall
       ctx.fillStyle = '#4a4a42';
       ctx.fillRect(x, y, w, h);
 
-      // Visible stairs going up
       ctx.fillStyle = '#3a3a34';
       for (let i = 0; i < 6; i++) {
         ctx.fillRect(x + w - 50, groundY - i * 14 - 14, 40, 10);
@@ -616,7 +607,6 @@
       ctx.fillStyle = '#2f2f2a';
       ctx.fillRect(x + w - 55, y, 10, h);
 
-      // "STAIRS" sign
       ctx.fillStyle = '#2a2a26';
       ctx.fillRect(x + 20, y + 20, 90, 24);
       ctx.fillStyle = '#e8c94a';
@@ -625,46 +615,59 @@
       ctx.fillText('STAIRS', x + 65, y + 37);
       ctx.textAlign = 'left';
 
-      // Door
       drawShopDoor(x + 20, groundY - 70, '#2a2a26');
     }
 
-    function drawRampArrow(x, y) {
-      // Wall-mounted directional sign
-      ctx.fillStyle = '#2a2a26';
-      ctx.fillRect(x - 10, y - 40, 110, 28);
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = 'bold 12px Courier New';
-      ctx.fillText('RAMP UP', x, y - 20);
+    // Proper concrete car ramp (no arrows)
+    function drawCarRamp(x, groundY) {
+      // Ramp base / side wall left
+      ctx.fillStyle = '#5a5a52';
+      ctx.beginPath();
+      ctx.moveTo(x, groundY);
+      ctx.lineTo(x + 20, groundY);
+      ctx.lineTo(x + 40, groundY - 90);
+      ctx.lineTo(x + 20, groundY - 90);
+      ctx.closePath();
+      ctx.fill();
 
-      // Arrow on the sign
-      ctx.strokeStyle = '#e8c94a';
-      ctx.fillStyle = '#e8c94a';
+      // Main ramp surface (inclined)
+      ctx.fillStyle = '#6a6a62';
+      ctx.beginPath();
+      ctx.moveTo(x + 20, groundY);
+      ctx.lineTo(x + 160, groundY);
+      ctx.lineTo(x + 180, groundY - 95);
+      ctx.lineTo(x + 40, groundY - 95);
+      ctx.closePath();
+      ctx.fill();
+
+      // Right side wall of ramp
+      ctx.fillStyle = '#4a4a44';
+      ctx.beginPath();
+      ctx.moveTo(x + 160, groundY);
+      ctx.lineTo(x + 180, groundY);
+      ctx.lineTo(x + 200, groundY - 95);
+      ctx.lineTo(x + 180, groundY - 95);
+      ctx.closePath();
+      ctx.fill();
+
+      // Yellow dashed center line on the ramp
+      ctx.strokeStyle = 'rgba(232,201,74,0.7)';
       ctx.lineWidth = 3;
+      ctx.setLineDash([12, 10]);
       ctx.beginPath();
-      ctx.moveTo(x + 70, y - 12);
-      ctx.lineTo(x + 90, y - 30);
+      ctx.moveTo(x + 90, groundY - 5);
+      ctx.lineTo(x + 110, groundY - 90);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x + 90, y - 30);
-      ctx.lineTo(x + 80, y - 30);
-      ctx.lineTo(x + 90, y - 20);
-      ctx.closePath();
-      ctx.fill();
+      ctx.setLineDash([]);
 
-      // Painted floor arrow
-      ctx.save();
-      ctx.translate(x + 40, y + 60);
-      ctx.rotate(-0.5);
+      // Top edge of ramp (into the upper level)
+      ctx.fillStyle = '#3f3f38';
+      ctx.fillRect(x + 30, groundY - 100, 160, 8);
+
+      // Small "UP" text on the side (subtle)
       ctx.fillStyle = 'rgba(232,201,74,0.6)';
-      ctx.fillRect(-8, -30, 16, 40);
-      ctx.beginPath();
-      ctx.moveTo(-20, -30);
-      ctx.lineTo(0, -55);
-      ctx.lineTo(20, -30);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText('UP', x + 8, groundY - 50);
     }
 
     // ===== ROOMS =====
@@ -811,14 +814,14 @@
         ctx.stroke();
       }
 
-      // Parked car
-      drawParkedCar(300, H * 0.88);
+      // Bigger parked car (moved a bit right so it doesn't overlap ramp)
+      drawParkedCar(340, H * 0.88);
+
+      // Proper car ramp in the middle-left (between exit and stairwell)
+      drawCarRamp(140, H * 0.75);
 
       // Stairwell (right end)
       drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
-
-      // Ramp-up arrow + sign
-      drawRampArrow(60, H * 0.6);
 
       // Exit door back to street (left)
       drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
@@ -831,7 +834,6 @@
       const W = canvas.width, H = canvas.height;
       ctx.fillStyle = '#3a3a36'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#2a2a28'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
-      // Simple stairs leading up
       ctx.fillStyle = '#4a4a42';
       for (let i = 0; i < 8; i++) {
         ctx.fillRect(180 + i * 30, H * 0.7 - i * 25, 140 - i * 8, 20);
@@ -848,7 +850,6 @@
 
     function drawParkingGarageLevel2() {
       const W = canvas.width, H = canvas.height;
-      // Slightly different concrete tone for level 2
       const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
       wallGrad.addColorStop(0, '#5e5e56');
       wallGrad.addColorStop(1, '#4a4a44');

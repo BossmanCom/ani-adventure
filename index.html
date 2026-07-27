@@ -58,6 +58,8 @@
     nekoSheet.src = 'neko_sheet.png?' + Date.now();
     let nekoFrameW = 466, nekoFrameH = 768;
     const NEKO_IDLE = 1, NEKO_WALK = [0, 2];
+    const nekoOff = document.createElement('canvas');
+    const nekoOffCtx = nekoOff.getContext('2d');
 
     const neko = {
       x: 180, y: 170, targetX: 180, targetY: 170,
@@ -128,6 +130,8 @@
     nekoSheet.onload = () => {
       nekoFrameW = Math.floor(nekoSheet.width / 3);
       nekoFrameH = nekoSheet.height;
+      nekoOff.width = nekoFrameW;
+      nekoOff.height = nekoFrameH;
     };
 
     function getCleanFrame(frameIndex) {
@@ -141,6 +145,21 @@
       }
       offCtx.putImageData(imgData, 0, 0);
       return off;
+    }
+
+    function getCleanNekoFrame(frameIndex) {
+      nekoOffCtx.clearRect(0, 0, nekoFrameW, nekoFrameH);
+      nekoOffCtx.drawImage(nekoSheet, frameIndex * nekoFrameW, 0, nekoFrameW, nekoFrameH, 0, 0, nekoFrameW, nekoFrameH);
+      const imgData = nekoOffCtx.getImageData(0, 0, nekoFrameW, nekoFrameH);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        // Remove near-white / light background that was causing the box
+        if (data[i] > 220 && data[i+1] > 220 && data[i+2] > 220) data[i+3] = 0;
+        // Also catch very light gray/beige that some sheets use
+        else if (data[i] > 200 && data[i+1] > 200 && data[i+2] > 190 && Math.abs(data[i]-data[i+1]) < 20) data[i+3] = 0;
+      }
+      nekoOffCtx.putImageData(imgData, 0, 0);
+      return nekoOff;
     }
 
     function changeRoom(target, spawnX, spawnY) {
@@ -229,6 +248,25 @@
       ctx.fillStyle = shadeColor(frameColor, -15); ctx.fillRect(doorX+4, doorY+4, 42, 62);
       ctx.fillStyle = '#e8d97a';
       ctx.beginPath(); ctx.arc(doorX+38, doorY+35, 3, 0, Math.PI*2); ctx.fill();
+    }
+
+    function drawStreetSign(x, y, text) {
+      // Nice wooden-ish street sign board
+      ctx.fillStyle = '#2a2218';
+      ctx.fillRect(x - 4, y - 4, 98, 36);
+      ctx.fillStyle = '#3d3226';
+      ctx.fillRect(x, y, 90, 28);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, 90, 28);
+      // little post under it
+      ctx.fillStyle = '#2a2218';
+      ctx.fillRect(x + 40, y + 28, 10, 12);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x + 45, y + 19);
+      ctx.textAlign = 'left';
     }
 
     function drawSword(cx, cy, angle, color) {
@@ -527,9 +565,11 @@
       drawClothingStore(310, groundY, 140, H*0.34);
       drawBarShop(470, groundY, 140, H*0.36);
       drawDoor(55, 190, 70, 90);
+      // Hallway label
       ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '12px Courier New';
       ctx.fillText('◄ Hallway', 50, 180);
-      ctx.fillText('Garage ►', 560, 170);
+      // Proper street sign for Garage entrance
+      drawStreetSign(540, 140, 'GARAGE →');
     }
 
     function drawGarageStreet() {
@@ -548,9 +588,8 @@
       drawBrokenBuilding(20, groundY, 140, H*0.30);
       drawBrokenBuilding(180, groundY, 120, H*0.24);
       drawParkingGarage(380, groundY, 240, H*0.40);
-      drawShopDoor(20, 185, '#5a3b28');
-      ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ City', 18, 175);
+      // Proper street sign instead of wooden door for back to City Street
+      drawStreetSign(8, 155, '← CITY');
     }
 
     function drawParkingGarageInterior() {
@@ -657,7 +696,7 @@
         ctx.restore();
       }
 
-      // Draw Neko
+      // Draw Neko (now with cleaned transparent background)
       if (nekoSheet.complete && nekoSheet.naturalWidth > 0) {
         const nw = nekoFrameW * neko.scale;
         const nh = nekoFrameH * neko.scale;
@@ -666,12 +705,13 @@
         ctx.ellipse(neko.x + nw/2, neko.y + nh - 4, nw*0.28, 8, 0, 0, Math.PI*2);
         ctx.fill();
 
+        const cleanNeko = getCleanNekoFrame(neko.frame);
         ctx.save();
         if (neko.facing === -1) {
           ctx.translate(neko.x + nw, neko.y); ctx.scale(-1, 1);
-          ctx.drawImage(nekoSheet, neko.frame * nekoFrameW, 0, nekoFrameW, nekoFrameH, 0, 0, nw, nh);
+          ctx.drawImage(cleanNeko, 0, 0, nekoFrameW, nekoFrameH, 0, 0, nw, nh);
         } else {
-          ctx.drawImage(nekoSheet, neko.frame * nekoFrameW, 0, nekoFrameW, nekoFrameH, neko.x, neko.y, nw, nh);
+          ctx.drawImage(cleanNeko, 0, 0, nekoFrameW, nekoFrameH, neko.x, neko.y, nw, nh);
         }
         ctx.restore();
       }

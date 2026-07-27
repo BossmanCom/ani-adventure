@@ -113,24 +113,29 @@
       stairwell: {
         name: 'Stairwell',
         doors: [
-          // Bottom door back to ground garage
           { x: 100, y: 370, w: 50, h: 70, target: 'parkingGarage', spawnX: 500, spawnY: 280 },
-          // Top door to top floor
           { x: 420, y: 80, w: 50, h: 70, target: 'garageTopFloor', spawnX: 500, spawnY: 280 }
         ]
       },
       parkingGarageLevel2: {
         name: 'Parking Garage - Level 2',
         doors: [
-          { x: 50, y: 300, w: 80, h: 80, target: 'parkingGarage', spawnX: 80, spawnY: 280 }
+          // Down door (left)
+          { x: 20, y: 290, w: 50, h: 70, target: 'parkingGarage', spawnX: 200, spawnY: 280 },
+          // Ramp up trigger (right side)
+          { x: 380, y: 150, w: 240, h: 220, target: 'parkingGarageLevel3', spawnX: 300, spawnY: 300 }
+        ]
+      },
+      parkingGarageLevel3: {
+        name: 'Parking Garage - Level 3',
+        doors: [
+          { x: 50, y: 300, w: 80, h: 80, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 280 }
         ]
       },
       garageTopFloor: {
         name: 'Parking Garage - Top Floor',
         doors: [
-          // Stairwell door (right)
           { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 430, spawnY: 120 },
-          // Outside door (left)
           { x: 20, y: 290, w: 50, h: 70, target: 'clearing', spawnX: 100, spawnY: 300 }
         ]
       },
@@ -665,23 +670,156 @@
       ctx.fillText('UP', x + 8, groundY - 50);
     }
 
-    // ===== NEW DETAILED STAIRWELL =====
+    // ===== LEVEL 2 HELPERS =====
+    function drawBigPillar(x, y, h) {
+      const w = 70;
+      ctx.fillStyle = '#606058';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(20,20,15,0.3)';
+      ctx.fillRect(x, y, 14, h);
+      ctx.fillRect(x + w - 14, y, 14, h);
+      ctx.strokeStyle = 'rgba(20,20,15,0.2)';
+      ctx.lineWidth = 2;
+      for (let by = y + 30; by < y + h; by += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, by);
+        ctx.lineTo(x + w, by);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#4a4a42';
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y + h);
+      ctx.lineTo(x + 22, y + h - 22);
+      ctx.lineTo(x + 34, y + h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + w - 30, y + h);
+      ctx.lineTo(x + w - 18, y + h - 16);
+      ctx.lineTo(x + w - 8, y + h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#e8c94a';
+      ctx.fillRect(x, y + h - 40, w, 6);
+    }
+
+    function drawParkedCarBlack(x, groundY) {
+      const bodyColor = '#1c1c1c';
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(x + 55, groundY + 4, 65, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = bodyColor;
+      ctx.fillRect(x, groundY - 26, 110, 22);
+
+      ctx.beginPath();
+      ctx.moveTo(x + 15, groundY - 26);
+      ctx.lineTo(x + 28, groundY - 46);
+      ctx.lineTo(x + 80, groundY - 46);
+      ctx.lineTo(x + 95, groundY - 26);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#3a3a40';
+      ctx.beginPath();
+      ctx.moveTo(x + 30, groundY - 28);
+      ctx.lineTo(x + 36, groundY - 42);
+      ctx.lineTo(x + 58, groundY - 42);
+      ctx.lineTo(x + 58, groundY - 28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + 62, groundY - 28);
+      ctx.lineTo(x + 62, groundY - 42);
+      ctx.lineTo(x + 78, groundY - 42);
+      ctx.lineTo(x + 88, groundY - 28);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 5, groundY - 18);
+      ctx.lineTo(x + 105, groundY - 18);
+      ctx.stroke();
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(x, groundY - 6, 110, 4);
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.beginPath(); ctx.arc(x + 25, groundY, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 85, groundY, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#4a4a4a';
+      ctx.beginPath(); ctx.arc(x + 25, groundY, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 85, groundY, 4, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#d9d9c9';
+      ctx.fillRect(x + 100, groundY - 20, 6, 8);
+    }
+
+    function drawBigRampUp(x, y, w, h) {
+      ctx.fillStyle = '#6a6a60';
+      ctx.beginPath();
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x + w, y + h);
+      ctx.lineTo(x + w - 40, y);
+      ctx.lineTo(x + 40, y);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(20,20,15,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x + 20, y + h);
+      ctx.lineTo(x + 40, y);
+      ctx.lineTo(x + 20, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + w, y + h);
+      ctx.lineTo(x + w - 20, y + h);
+      ctx.lineTo(x + w - 40, y);
+      ctx.lineTo(x + w - 20, y);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(232,201,74,0.5)';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([14, 10]);
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2, y + h - 10);
+      ctx.lineTo(x + w / 2, y + 10);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#e8c94a';
+      ctx.fillRect(x, y + h - 8, w, 6);
+
+      ctx.fillStyle = '#2a2a26';
+      ctx.fillRect(x + w / 2 - 30, y - 30, 60, 22);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('UP ▲', x + w / 2, y - 14);
+      ctx.textAlign = 'left';
+    }
+
+    // ===== DETAILED STAIRWELL =====
     function drawStairwellInterior() {
       const W = canvas.width;
       const H = canvas.height;
 
-      // Concrete walls
       ctx.fillStyle = '#5c5c54';
       ctx.fillRect(0, 0, W, H);
 
-      // Damp stains
       ctx.fillStyle = 'rgba(30,35,25,0.2)';
       for (let i = 0; i < 4; i++) {
         const sx = 40 + i * (W / 4);
         ctx.fillRect(sx, 0, 5, H * 0.4);
       }
 
-      // Staircase
       const stepCount = 10;
       const stepW = W * 0.5;
       const stepH = (H * 0.65) / stepCount;
@@ -701,7 +839,6 @@
         ctx.fillRect(sx, sy - stepH, sw, 3);
       }
 
-      // Handrail
       ctx.strokeStyle = '#3a3a34';
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -719,7 +856,6 @@
         ctx.stroke();
       }
 
-      // Hanging light bulb
       ctx.strokeStyle = '#2a2a26';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -731,13 +867,11 @@
       ctx.arc(W * 0.5, 48, 8, 0, Math.PI * 2);
       ctx.fill();
 
-      // Bottom door
       drawShopDoor(baseX - 60, baseY - 70, '#2a2a26');
       ctx.fillStyle = '#e8c94a';
       ctx.font = '12px Courier New';
       ctx.fillText('◄ Garage', baseX - 75, baseY - 78);
 
-      // Top door
       const topX = baseX + stepCount * 6 + (stepW - stepCount * 12) - 30;
       const topY = baseY - stepCount * stepH;
       drawShopDoor(topX, topY - 70, '#2a2a26');
@@ -767,7 +901,6 @@
         ctx.fill();
       }
 
-      // Open sky at top
       ctx.fillStyle = '#8fa0b8';
       ctx.fillRect(0, 0, W, H * 0.12);
 
@@ -795,14 +928,11 @@
         ctx.stroke();
       }
 
-      // Low retaining wall
       ctx.fillStyle = '#5c5c54';
       ctx.fillRect(0, H * 0.66, W, 10);
 
-      // Stairwell down (right)
       drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
 
-      // Outside door (left)
       drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
       ctx.fillStyle = '#e8c94a';
       ctx.font = '12px Courier New';
@@ -814,14 +944,12 @@
       const W = canvas.width;
       const H = canvas.height;
 
-      // Overcast sky
       const sky = ctx.createLinearGradient(0, 0, 0, H * 0.5);
       sky.addColorStop(0, '#8f9aab');
       sky.addColorStop(1, '#c4c2b8');
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, H * 0.5);
 
-      // Distant tree line
       ctx.fillStyle = '#6a7a5a';
       for (let x = 0; x < W; x += 40) {
         const h = 20 + (x % 80 === 0 ? 10 : 0);
@@ -830,11 +958,9 @@
         ctx.fill();
       }
 
-      // Empty parking lot
       ctx.fillStyle = '#4a4a48';
       ctx.fillRect(0, H * 0.5, W * 0.65, H * 0.5);
 
-      // Faded lot lines
       ctx.strokeStyle = 'rgba(232,201,74,0.3)';
       ctx.lineWidth = 3;
       for (let x = 20; x < W * 0.6; x += 90) {
@@ -844,7 +970,6 @@
         ctx.stroke();
       }
 
-      // Cracks
       ctx.strokeStyle = 'rgba(20,20,18,0.4)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -853,12 +978,10 @@
       ctx.lineTo(110, H * 0.85);
       ctx.stroke();
 
-      // Grass patches
       ctx.fillStyle = '#7a8a5a';
       drawPuddle(40, H * 0.52, 18, 6);
       drawPuddle(W * 0.6 - 10, H * 0.8, 16, 5);
 
-      // Gravel rockway
       ctx.fillStyle = '#9a9284';
       ctx.fillRect(W * 0.65, H * 0.5, W * 0.35, H * 0.5);
 
@@ -882,10 +1005,8 @@
       ctx.lineTo(W * 0.65, H);
       ctx.stroke();
 
-      // Fox + Cat van
       drawFoxCatVan(180, H * 0.85);
 
-      // Door back to top floor
       drawShopDoor(20, H * 0.5 - 40, '#2a2a26');
       ctx.fillStyle = '#2a2a26';
       ctx.font = '12px Courier New';
@@ -934,9 +1055,7 @@
       ctx.beginPath(); ctx.arc(x + 35, groundY, 5, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(x + 140, groundY, 5, 0, Math.PI * 2); ctx.fill();
 
-      // Fox face (left)
       drawFaceDecal(x + 45, groundY - 40, '#d9803a', 'fox');
-      // Cat face (right)
       drawFaceDecal(x + 110, groundY - 40, '#8a8a92', 'cat');
     }
 
@@ -1131,23 +1250,81 @@
       ctx.fillText('◄ Street', 5, H * 0.75 - 78);
     }
 
+    // ===== DETAILED LEVEL 2 =====
     function drawParkingGarageLevel2() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
+      wallGrad.addColorStop(0, '#68685f');
+      wallGrad.addColorStop(1, '#52524a');
+      ctx.fillStyle = wallGrad;
+      ctx.fillRect(0, 0, W, H * 0.75);
+
+      // Lighter stains
+      ctx.fillStyle = 'rgba(30,35,25,0.12)';
+      for (let i = 0; i < 4; i++) {
+        const sx = 60 + i * (W / 4);
+        ctx.fillRect(sx, 0, 4, H * 0.25);
+      }
+
+      // Ceiling beams
+      ctx.fillStyle = '#3f3f38';
+      for (let x = 40; x < W; x += 160) {
+        ctx.fillRect(x, 0, 24, H * 0.12);
+      }
+
+      // Big central pillar
+      drawBigPillar(W * 0.42, H * 0.1, H * 0.65);
+
+      // Floor
+      ctx.fillStyle = '#78786e';
+      ctx.fillRect(0, H * 0.75, W, H * 0.25);
+
+      // Parking lines
+      ctx.strokeStyle = 'rgba(232,201,74,0.3)';
+      ctx.lineWidth = 3;
+      for (let x = 30; x < W; x += 130) {
+        ctx.beginPath();
+        ctx.moveTo(x, H * 0.78);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+
+      // Light dust
+      ctx.fillStyle = 'rgba(40,45,35,0.15)';
+      drawPuddle(550, H * 0.9, 26, 8);
+
+      // Black car (left)
+      drawParkedCarBlack(90, H * 0.88);
+
+      // Big ramp up (right)
+      drawBigRampUp(W - 260, H * 0.3, 240, H * 0.65);
+
+      // Down door
+      drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = '12px Courier New';
+      ctx.fillText('◄ Down', 5, H * 0.75 - 78);
+    }
+
+    function drawParkingGarageLevel3() {
       const W = canvas.width, H = canvas.height;
       const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
-      wallGrad.addColorStop(0, '#5e5e56');
-      wallGrad.addColorStop(1, '#4a4a44');
+      wallGrad.addColorStop(0, '#5a5a52');
+      wallGrad.addColorStop(1, '#484840');
       ctx.fillStyle = wallGrad;
       ctx.fillRect(0, 0, W, H * 0.75);
       ctx.fillStyle = '#6a6a62';
       ctx.fillRect(0, H * 0.75, W, H * 0.25);
       ctx.fillStyle = '#e8c94a'; ctx.font = '16px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('Parking Garage — Level 2', W / 2, 50);
+      ctx.fillText('Parking Garage — Level 3', W / 2, 50);
       ctx.font = '12px Courier New'; ctx.fillStyle = '#aaa';
-      ctx.fillText('(More detail coming soon)', W / 2, 80);
+      ctx.fillText('(Coming soon)', W / 2, 80);
       ctx.textAlign = 'left';
       drawShopDoor(50, 300, '#2a2a26');
       ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Ground', 40, 290);
+      ctx.fillText('◄ Level 2', 40, 290);
     }
 
     function drawWeaponStoreInterior() {
@@ -1213,6 +1390,7 @@
       else if (currentRoom === 'parkingGarage') drawParkingGarageInterior();
       else if (currentRoom === 'stairwell') drawStairwellInterior();
       else if (currentRoom === 'parkingGarageLevel2') drawParkingGarageLevel2();
+      else if (currentRoom === 'parkingGarageLevel3') drawParkingGarageLevel3();
       else if (currentRoom === 'garageTopFloor') drawGarageTopFloor();
       else if (currentRoom === 'clearing') drawClearing();
       else if (currentRoom === 'weaponStore') drawWeaponStoreInterior();

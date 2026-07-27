@@ -66,6 +66,10 @@
       speed: 2.5, facing: 1, frame: NEKO_IDLE, animTimer: 0, scale: 0.28
     };
 
+    // === CAR SHEET ===
+    const carSheet = new Image();
+    carSheet.src = 'car_sheet.png?' + Date.now();
+
     let currentRoom = 'room';
     let activeMenu = null; // null | 'map'
 
@@ -589,53 +593,28 @@
       ctx.fill();
     }
 
-    function drawParkedCar(x, groundY) {
-      const bodyColor = '#8a3a3a';
+    // Draw car from the car_sheet.png (0=red Flare, 1=black Shadow, 2=van)
+    function drawCarSprite(x, groundY, which, scale) {
+      if (!carSheet.complete || carSheet.naturalWidth === 0) return;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      // Approximate source rects for the top-row 3/4 views
+      // These may need slight tweaking once we see them in-game
+      const srcs = [
+        { sx: 30,  sy: 30,  sw: 540, sh: 290 }, // red Flare
+        { sx: 620, sy: 30,  sw: 540, sh: 290 }, // black Shadow
+        { sx: 1220,sy: 20,  sw: 580, sh: 340 }  // Whiskers van
+      ];
+      const s = srcs[which] || srcs[0];
+      const dw = s.sw * scale;
+      const dh = s.sh * scale;
+
+      // soft shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
       ctx.beginPath();
-      ctx.ellipse(x + 70, groundY + 5, 85, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + dw * 0.48, groundY + 5, dw * 0.46, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = bodyColor;
-      ctx.fillRect(x, groundY - 34, 145, 28);
-
-      ctx.beginPath();
-      ctx.moveTo(x + 18, groundY - 34);
-      ctx.lineTo(x + 35, groundY - 60);
-      ctx.lineTo(x + 105, groundY - 60);
-      ctx.lineTo(x + 125, groundY - 34);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#cfe0e8';
-      ctx.beginPath();
-      ctx.moveTo(x + 38, groundY - 36);
-      ctx.lineTo(x + 46, groundY - 56);
-      ctx.lineTo(x + 72, groundY - 56);
-      ctx.lineTo(x + 72, groundY - 36);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(x + 78, groundY - 36);
-      ctx.lineTo(x + 78, groundY - 56);
-      ctx.lineTo(x + 100, groundY - 56);
-      ctx.lineTo(x + 112, groundY - 36);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = shadeColor(bodyColor, -30);
-      ctx.fillRect(x, groundY - 8, 145, 5);
-
-      ctx.fillStyle = '#1a1a1a';
-      ctx.beginPath(); ctx.arc(x + 32, groundY, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 112, groundY, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#6a6a62';
-      ctx.beginPath(); ctx.arc(x + 32, groundY, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 112, groundY, 5, 0, Math.PI * 2); ctx.fill();
-
-      ctx.fillStyle = '#e8d9a0';
-      ctx.fillRect(x + 132, groundY - 26, 8, 10);
+      ctx.drawImage(carSheet, s.sx, s.sy, s.sw, s.sh, x, groundY - dh + 12, dw, dh);
     }
 
     function drawStairwell(x, groundY, w, h) {
@@ -697,10 +676,7 @@
 
       ctx.fillStyle = '#3f3f38';
       ctx.fillRect(x + 30, groundY - 100, 160, 8);
-
-      ctx.fillStyle = 'rgba(232,201,74,0.6)';
-      ctx.font = 'bold 11px Courier New';
-      ctx.fillText('UP', x + 8, groundY - 50);
+      // no "UP" text anymore
     }
 
     // ===== LEVEL 2 HELPERS =====
@@ -734,62 +710,6 @@
       ctx.fill();
       ctx.fillStyle = '#e8c94a';
       ctx.fillRect(x, y + h - 40, w, 6);
-    }
-
-    function drawParkedCarBlack(x, groundY) {
-      const bodyColor = '#1c1c1c';
-
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.beginPath();
-      ctx.ellipse(x + 55, groundY + 4, 65, 8, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = bodyColor;
-      ctx.fillRect(x, groundY - 26, 110, 22);
-
-      ctx.beginPath();
-      ctx.moveTo(x + 15, groundY - 26);
-      ctx.lineTo(x + 28, groundY - 46);
-      ctx.lineTo(x + 80, groundY - 46);
-      ctx.lineTo(x + 95, groundY - 26);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#3a3a40';
-      ctx.beginPath();
-      ctx.moveTo(x + 30, groundY - 28);
-      ctx.lineTo(x + 36, groundY - 42);
-      ctx.lineTo(x + 58, groundY - 42);
-      ctx.lineTo(x + 58, groundY - 28);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(x + 62, groundY - 28);
-      ctx.lineTo(x + 62, groundY - 42);
-      ctx.lineTo(x + 78, groundY - 42);
-      ctx.lineTo(x + 88, groundY - 28);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + 5, groundY - 18);
-      ctx.lineTo(x + 105, groundY - 18);
-      ctx.stroke();
-
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(x, groundY - 6, 110, 4);
-
-      ctx.fillStyle = '#0a0a0a';
-      ctx.beginPath(); ctx.arc(x + 25, groundY, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 85, groundY, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#4a4a4a';
-      ctx.beginPath(); ctx.arc(x + 25, groundY, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 85, groundY, 4, 0, Math.PI * 2); ctx.fill();
-
-      ctx.fillStyle = '#d9d9c9';
-      ctx.fillRect(x + 100, groundY - 20, 6, 8);
     }
 
     function drawBigRampUp(x, y, w, h) {
@@ -829,14 +749,7 @@
 
       ctx.fillStyle = '#e8c94a';
       ctx.fillRect(x, y + h - 8, w, 6);
-
-      ctx.fillStyle = '#2a2a26';
-      ctx.fillRect(x + w / 2 - 30, y - 30, 60, 22);
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = 'bold 13px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText('UP ▲', x + w / 2, y - 14);
-      ctx.textAlign = 'left';
+      // no "UP ▲" box anymore
     }
 
     // ===== DETAILED STAIRWELL =====
@@ -1342,7 +1255,8 @@
         ctx.stroke();
       }
 
-      drawParkedCar(340, H * 0.88);
+      // Red Flare car from sheet, bigger scale
+      drawCarSprite(280, H * 0.88, 0, 0.36);
       drawCarRamp(140, H * 0.75);
       drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
 
@@ -1390,7 +1304,8 @@
       ctx.fillStyle = 'rgba(40,45,35,0.15)';
       drawPuddle(550, H * 0.9, 26, 8);
 
-      drawParkedCarBlack(90, H * 0.88);
+      // Black Shadow car from sheet
+      drawCarSprite(60, H * 0.88, 1, 0.34);
       drawBigRampUp(W - 260, H * 0.3, 240, H * 0.65);
 
       drawShopDoor(20, H * 0.75 - 70, '#2a2a26');

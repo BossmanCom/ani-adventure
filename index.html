@@ -33,7 +33,7 @@
 </head>
 <body>
   <canvas id="gameCanvas" width="640" height="480"></canvas>
-  <div class="info" id="roomLabel">Ani's Room</div>
+  <div class="info" id="roomLabel">The Arcane Den</div>
 
   <script>
     const canvas = document.getElementById('gameCanvas');
@@ -42,24 +42,26 @@
 
     // === ANI ===
     const sheet = new Image();
-    sheet.src = 'ani_sheet.png?' + Date.now();
     let frameW = 512, frameH = 512;
     const IDLE_FRAME = 2, WALK_FRAMES = [0, 3];
     const off = document.createElement('canvas');
-    const offCtx = off.getContext('2d');
+    const offCtx = off.getContext('2d', { willReadFrequently: true });
+    // Cache cleaned frames so we don't run getImageData every tick (that was freezing/blanking characters)
+    const aniFrameCache = {};
 
     const ani = {
       x: 270, y: 160, targetX: 270, targetY: 160,
       speed: 2.8, facing: 1, frame: IDLE_FRAME, animTimer: 0, scale: 0.36
     };
 
-    // === NEKO (black catgirl) ===
+    // === NEKO (black catgirl — original short-hair travel sheet) ===
     const nekoSheet = new Image();
-    nekoSheet.src = 'neko_sheet.png?' + Date.now();
     let nekoFrameW = 466, nekoFrameH = 768;
+    const NEKO_FRAME_COUNT = 3; // original 3-frame horizontal sheet
     const NEKO_IDLE = 1, NEKO_WALK = [0, 2];
     const nekoOff = document.createElement('canvas');
-    const nekoOffCtx = nekoOff.getContext('2d');
+    const nekoOffCtx = nekoOff.getContext('2d', { willReadFrequently: true });
+    const nekoFrameCache = {};
 
     const neko = {
       x: 180, y: 170, targetX: 180, targetY: 170,
@@ -68,146 +70,492 @@
 
     // === CAR SHEET ===
     const carSheet = new Image();
-    carSheet.src = 'car_sheet.png?' + Date.now();
+
+    // === LOCATION concept art ===
+    const weaponExt = new Image();
+    const weaponInt = new Image();
+    const clothingExt = new Image();
+    const clothingInt = new Image();
+    const barExt = new Image();
+    const barInt = new Image();
+    const bedroomArt = new Image();
+    const hallwayArt = new Image();
+    const kitchenArt = new Image();
+    const streetRoadArt = new Image();
+    const garageStreetArt = new Image();
+    const garageFloor1Art = new Image();
+    const garageFloor2Art = new Image();
+    const garageFloor3Art = new Image();
+    const garageFloor4Art = new Image();
+    const garageRoofArt = new Image();
+    const homeHouseArt = new Image();
+    const garageStairsArt = new Image();
+    const weaponPersonArt = new Image();
+    const clothingPersonArt = new Image();
+    const swordFoxArt = new Image();
+    const nekoClawsArt = new Image();
+    // Combat sheets: Ani shared 5-frame sheets; Neko short-hair swing sheet (2×2)
+    const combatAttackSheet = new Image();
+    const combatDefendSheet = new Image();
+    const nekoAttackSheet = new Image();
+    const combatFrameCache = {}; // key: 'atk_ani_0' etc.
 
     let currentRoom = 'room';
-    let activeMenu = null; // null | 'map'
+    let activeMenu = null; // null | 'map' | 'weaponShop' | 'clothingShop' | 'combat'
+    let gameStarted = false;
+    let playerGold = 50;
+    let inventory = []; // item ids, e.g. 'fox_sword', 'neko_claws'
+    let shopToast = ''; // brief feedback text
+    let shopToastTimer = 0;
+    let shopSelected = 0; // weapon shop selected row
 
-    // Clickable van hitbox in the clearing
-    const vanHitbox = { x: 180, y: 340, w: 180, h: 70 };
+    // Training / turn-based combat (warehouse)
+    const trainingBoxHitbox = { x: 470, y: 280, w: 120, h: 90 };
+    const COMBAT_FRAMES = 5;
+    const COMBAT_FRAME_TICKS = 7; // frames per pose (~7/60s)
+    const combat = {
+      active: false,
+      turn: 'ani', // 'ani' | 'neko'
+      dummyHp: 40,
+      dummyMaxHp: 40,
+      defending: { ani: false, neko: false },
+      log: 'Training ready.',
+      won: false,
+      // playing attack/defend sheet
+      anim: null // { who, type:'attack'|'defend', frame, timer, pending }
+    };
+
+    // Clickable Whiskers van on the roof (map menu)
+    const vanHitbox = { x: 180, y: 300, w: 220, h: 110 };
+    // Weapons merchant feet anchor (right side of shop); hitbox filled each draw
+    const weaponNpcPos = { feetX: 500, feetY: 400 }; // floor position
+    const weaponNpcHitbox = { x: 450, y: 200, w: 100, h: 200 };
+    // Clothing merchant
+    const clothingNpcPos = { feetX: 500, feetY: 400 };
+    const clothingNpcHitbox = { x: 450, y: 200, w: 100, h: 200 };
 
     const rooms = {
       room: {
-        name: "Ani's Room",
-        doors: [{ x: 545, y: 110, w: 80, h: 170, target: 'hallway', spawnX: 90, spawnY: 160 }]
+        name: 'The Arcane Den',
+        // Exit pad on the right (hallway)
+        doors: [{ x: 540, y: 300, w: 90, h: 150, target: 'hallway', spawnX: 90, spawnY: 160 }]
       },
       hallway: {
-        name: 'Hallway',
+        name: 'Passage of Stars',
         doors: [
-          { x: 15, y: 110, w: 75, h: 170, target: 'room', spawnX: 480, spawnY: 160 },
-          { x: 550, y: 110, w: 75, h: 170, target: 'outside', spawnX: 80, spawnY: 200 },
-          { x: 270, y: 110, w: 100, h: 170, target: 'kitchen', spawnX: 300, spawnY: 180 }
+          { x: 10, y: 300, w: 95, h: 140, target: 'room', spawnX: 480, spawnY: 280 },
+          { x: 530, y: 280, w: 100, h: 160, target: 'outside', spawnX: 70, spawnY: 220 },
+          { x: 260, y: 340, w: 120, h: 100, target: 'kitchen', spawnX: 300, spawnY: 280 }
         ]
       },
       kitchen: {
-        name: 'Kitchen',
-        doors: [{ x: 270, y: 380, w: 100, h: 70, target: 'hallway', spawnX: 300, spawnY: 140 }]
+        name: 'The Alchemical Pantry',
+        doors: [{ x: 260, y: 380, w: 120, h: 80, target: 'hallway', spawnX: 300, spawnY: 280 }]
       },
       outside: {
         name: 'City Street',
         doors: [
-          { x: 55, y: 190, w: 70, h: 90, target: 'hallway', spawnX: 500, spawnY: 160 },
-          { x: 195, y: 194, w: 50, h: 70, target: 'weaponStore', spawnX: 120, spawnY: 220 },
-          { x: 355, y: 194, w: 50, h: 70, target: 'clothingStore', spawnX: 120, spawnY: 220 },
-          { x: 525, y: 194, w: 50, h: 70, target: 'bar', spawnX: 100, spawnY: 220 },
-          { x: 600, y: 180, w: 40, h: 100, target: 'garageStreet', spawnX: 60, spawnY: 200 }
+          // Home house facade (left) — hallway / Arcane Den
+          { x: 15, y: 145, w: 110, h: 135, target: 'hallway', spawnX: 500, spawnY: 280 },
+          // Shop facades lined up on the sidewalk
+          { x: 145, y: 160, w: 140, h: 110, target: 'weaponStore', spawnX: 80, spawnY: 300 },
+          { x: 300, y: 160, w: 140, h: 110, target: 'clothingStore', spawnX: 80, spawnY: 300 },
+          { x: 455, y: 160, w: 90, h: 110, target: 'bar', spawnX: 80, spawnY: 300 },
+          // Garage exit on the far right
+          { x: 555, y: 175, w: 85, h: 115, target: 'garageStreet', spawnX: 80, spawnY: 200 }
         ]
       },
       garageStreet: {
         name: 'Garage Street',
         doors: [
-          { x: 20, y: 180, w: 50, h: 80, target: 'outside', spawnX: 560, spawnY: 200 },
-          { x: 530, y: 184, w: 80, h: 80, target: 'parkingGarage', spawnX: 300, spawnY: 220 }
+          { x: 10, y: 300, w: 100, h: 130, target: 'outside', spawnX: 540, spawnY: 220 },
+          // Abandoned building on the left → warehouse
+          { x: 90, y: 150, w: 100, h: 140, target: 'warehouse', spawnX: 80, spawnY: 300 },
+          // Arch / tunnel into the garage
+          { x: 380, y: 180, w: 200, h: 180, target: 'parkingGarage', spawnX: 120, spawnY: 300 }
+        ]
+      },
+      warehouse: {
+        name: 'Abandoned Warehouse',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'garageStreet', spawnX: 130, spawnY: 260 }
+        ]
+      },
+      warehouseBattle: {
+        name: 'Warehouse — Training',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'warehouse', spawnX: 100, spawnY: 300 }
         ]
       },
       parkingGarage: {
-        name: 'Parking Garage - Ground',
+        name: 'Parking Garage - Level 1',
         doors: [
-          { x: 20, y: 290, w: 50, h: 70, target: 'garageStreet', spawnX: 540, spawnY: 210 },
-          { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 140, spawnY: 350 },
-          { x: 160, y: 250, w: 140, h: 110, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 300 }
+          { x: 10, y: 340, w: 90, h: 100, target: 'garageStreet', spawnX: 420, spawnY: 280 },
+          // Stairs to roof (right side of art)
+          { x: 480, y: 200, w: 140, h: 200, target: 'stairwell', spawnX: 140, spawnY: 350 },
+          // Center ramp up to Level 2
+          { x: 280, y: 160, w: 160, h: 200, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 300 }
         ]
       },
       stairwell: {
         name: 'Stairwell',
         doors: [
-          { x: 100, y: 370, w: 50, h: 70, target: 'parkingGarage', spawnX: 500, spawnY: 280 },
-          { x: 420, y: 80, w: 50, h: 70, target: 'garageTopFloor', spawnX: 500, spawnY: 280 }
+          { x: 40, y: 360, w: 100, h: 100, target: 'parkingGarage', spawnX: 500, spawnY: 280 },
+          { x: 480, y: 80, w: 120, h: 160, target: 'garageTopFloor', spawnX: 500, spawnY: 280 }
         ]
       },
       parkingGarageLevel2: {
         name: 'Parking Garage - Level 2',
         doors: [
-          { x: 20, y: 290, w: 50, h: 70, target: 'parkingGarage', spawnX: 200, spawnY: 280 },
-          { x: 380, y: 150, w: 240, h: 220, target: 'parkingGarageLevel3', spawnX: 300, spawnY: 300 }
+          { x: 10, y: 340, w: 90, h: 100, target: 'parkingGarage', spawnX: 300, spawnY: 300 },
+          // Center ramp up → Level 3
+          { x: 250, y: 120, w: 200, h: 240, target: 'parkingGarageLevel3', spawnX: 90, spawnY: 280 }
         ]
       },
       parkingGarageLevel3: {
         name: 'Parking Garage - Level 3',
         doors: [
-          { x: 50, y: 300, w: 80, h: 80, target: 'parkingGarageLevel2', spawnX: 100, spawnY: 280 }
+          { x: 10, y: 340, w: 90, h: 100, target: 'parkingGarageLevel2', spawnX: 300, spawnY: 300 },
+          // Ramp up → Level 4
+          { x: 250, y: 120, w: 200, h: 240, target: 'parkingGarageLevel4', spawnX: 100, spawnY: 300 }
+        ]
+      },
+      parkingGarageLevel4: {
+        name: 'Parking Garage - Level 4',
+        doors: [
+          { x: 10, y: 340, w: 90, h: 100, target: 'parkingGarageLevel3', spawnX: 300, spawnY: 300 },
+          // Archway up → roof
+          { x: 250, y: 140, w: 200, h: 220, target: 'garageTopFloor', spawnX: 120, spawnY: 300 }
         ]
       },
       garageTopFloor: {
-        name: 'Parking Garage - Top Floor',
+        name: 'Parking Garage - Roof',
         doors: [
-          { x: 480, y: 290, w: 50, h: 70, target: 'stairwell', spawnX: 430, spawnY: 120 },
-          { x: 20, y: 290, w: 50, h: 70, target: 'clearing', spawnX: 100, spawnY: 300 }
-        ]
-      },
-      clearing: {
-        name: 'Outside Clearing',
-        doors: [
-          { x: 20, y: 200, w: 50, h: 70, target: 'garageTopFloor', spawnX: 80, spawnY: 280 }
+          { x: 10, y: 340, w: 90, h: 100, target: 'parkingGarageLevel4', spawnX: 300, spawnY: 300 },
+          // Stairs down into stairwell
+          { x: 500, y: 300, w: 120, h: 120, target: 'stairwell', spawnX: 430, spawnY: 120 }
         ]
       },
       weaponStore: {
-        name: 'Weapon Store',
-        doors: [{ x: 55, y: 220, w: 55, h: 80, target: 'outside', spawnX: 210, spawnY: 210 }]
+        name: 'The Arcane Armory',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'outside', spawnX: 210, spawnY: 210 }]
       },
       clothingStore: {
-        name: 'Clothing Store',
-        doors: [{ x: 55, y: 220, w: 55, h: 80, target: 'outside', spawnX: 370, spawnY: 210 }]
+        name: 'Arcane Attire',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'outside', spawnX: 370, spawnY: 210 }]
       },
       bar: {
-        name: 'The Bar',
-        doors: [{ x: 35, y: 220, w: 55, h: 80, target: 'outside', spawnX: 540, spawnY: 210 }]
+        name: 'The Eldritch Tap',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'outside', spawnX: 500, spawnY: 210 }]
+      },
+      // Map travel destinations
+      forestEntrance: {
+        name: 'Whispering Forest — Crossroads',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'garageTopFloor', spawnX: 280, spawnY: 300 },
+          // 5 forest paths
+          { x: 40, y: 120, w: 100, h: 80, target: 'forestPath1', spawnX: 100, spawnY: 300 },
+          { x: 160, y: 90, w: 100, h: 80, target: 'forestPath2', spawnX: 100, spawnY: 300 },
+          { x: 280, y: 70, w: 100, h: 80, target: 'forestPath3', spawnX: 100, spawnY: 300 },
+          { x: 400, y: 90, w: 100, h: 80, target: 'forestPath4', spawnX: 100, spawnY: 300 },
+          { x: 520, y: 120, w: 100, h: 80, target: 'forestPath5', spawnX: 100, spawnY: 300 }
+        ]
+      },
+      forestPath1: {
+        name: 'Forest — Moss Trail',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 80, spawnY: 220 }]
+      },
+      forestPath2: {
+        name: 'Forest — Firefly Creek',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 200, spawnY: 200 }]
+      },
+      forestPath3: {
+        name: 'Forest — Ancient Grove',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 320, spawnY: 190 }]
+      },
+      forestPath4: {
+        name: 'Forest — Mushroom Hollow',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 440, spawnY: 200 }]
+      },
+      forestPath5: {
+        name: 'Forest — Deep Thicket',
+        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 540, spawnY: 220 }]
+      },
+      dreamcore: {
+        name: 'Dreamcore Limbo',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'garageTopFloor', spawnX: 280, spawnY: 300 }
+        ]
       }
     };
 
-    sheet.onload = () => {
-      frameW = sheet.width / 2;
-      frameH = sheet.height / 2;
-      off.width = frameW; off.height = frameH;
+    // Map destinations (clickable tiles in van map menu)
+    const mapLocations = [
+      {
+        id: 'forest',
+        name: 'Whispering Forest',
+        sub: 'Entrance unlocked',
+        x: 120, y: 130, w: 180, h: 100,
+        target: 'forestEntrance', spawnX: 300, spawnY: 300,
+        color: '#2a4a32', accent: '#6dff9a'
+      },
+      {
+        id: 'dreamcore',
+        name: 'Dreamcore',
+        sub: 'Limbo unlocked',
+        x: 340, y: 130, w: 180, h: 100,
+        target: 'dreamcore', spawnX: 300, spawnY: 300,
+        color: '#3a2a4a', accent: '#c9a0ff'
+      },
+      {
+        id: 'locked1',
+        name: '???',
+        sub: '(Locked)',
+        x: 120, y: 260, w: 180, h: 100,
+        locked: true,
+        color: '#2a2a2a', accent: '#555'
+      },
+      {
+        id: 'locked2',
+        name: '???',
+        sub: '(Locked)',
+        x: 340, y: 260, w: 180, h: 100,
+        locked: true,
+        color: '#2a2a2a', accent: '#555'
+      }
+    ];
+
+    function startGameLoop() {
+      if (gameStarted) return;
+      gameStarted = true;
       requestAnimationFrame(loop);
+    }
+
+    sheet.onload = () => {
+      frameW = Math.max(1, Math.floor(sheet.width / 2));
+      frameH = Math.max(1, Math.floor(sheet.height / 2));
+      off.width = frameW;
+      off.height = frameH;
+      // wipe frame cache when sheet reloads
+      for (const k of Object.keys(aniFrameCache)) delete aniFrameCache[k];
+      startGameLoop();
+    };
+    sheet.onerror = () => {
+      console.error('Failed to load ani_sheet.png — open index.html from the ani-adventure folder so images load.');
+      roomLabel.textContent = "Ani's Room (sprite missing — check folder)";
+      startGameLoop();
     };
 
     nekoSheet.onload = () => {
-      nekoFrameW = Math.floor(nekoSheet.width / 3);
-      nekoFrameH = nekoSheet.height;
+      // Original 3-frame horizontal travel sheet
+      nekoFrameW = Math.max(1, Math.floor(nekoSheet.width / NEKO_FRAME_COUNT));
+      nekoFrameH = Math.max(1, nekoSheet.height);
       nekoOff.width = nekoFrameW;
       nekoOff.height = nekoFrameH;
+      for (const k of Object.keys(nekoFrameCache)) delete nekoFrameCache[k];
+      neko.frame = NEKO_IDLE;
+    };
+    nekoSheet.onerror = () => {
+      console.error('Failed to load neko_sheet.png');
     };
 
-    function getCleanFrame(frameIndex) {
-      const col = frameIndex % 2, row = Math.floor(frameIndex / 2);
-      offCtx.clearRect(0, 0, frameW, frameH);
-      offCtx.drawImage(sheet, col * frameW, row * frameH, frameW, frameH, 0, 0, frameW, frameH);
-      const imgData = offCtx.getImageData(0, 0, frameW, frameH);
-      const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 230 && data[i+1] > 230 && data[i+2] > 230) data[i+3] = 0;
+    // Assign src AFTER onload handlers (fixes cached-image onload miss)
+    // Use pre-cut transparent sheet so Ani has no white box (file:// can't reliably chroma-key)
+    sheet.src = 'ani_sheet_trans.png';
+    nekoSheet.src = 'neko_sheet.png';
+    carSheet.src = 'car_sheet.png';
+    weaponExt.src = 'assets/weapon_shop_ext.png';
+    weaponInt.src = 'assets/weapon_shop_int.png';
+    clothingExt.src = 'assets/clothing_shop_ext.png';
+    clothingInt.src = 'assets/clothing_shop_int.png';
+    barExt.src = 'assets/bar_shop_ext.png';
+    barInt.src = 'assets/bar_shop_int.png';
+    bedroomArt.src = 'assets/bedroom_arcane_den.png';
+    hallwayArt.src = 'assets/hallway_passage.png';
+    kitchenArt.src = 'assets/kitchen_alchemical.png';
+    streetRoadArt.src = 'assets/city_street_road.png';
+    garageStreetArt.src = 'assets/garage_street.png';
+    garageFloor1Art.src = 'assets/garage_floor1.png';
+    garageFloor2Art.src = 'assets/garage_floor2.png';
+    garageFloor3Art.src = 'assets/garage_floor3.png';
+    garageFloor4Art.src = 'assets/garage_floor4.png';
+    garageRoofArt.src = 'assets/garage_roof.png';
+    homeHouseArt.src = 'assets/home_house.png';
+    garageStairsArt.src = 'assets/garage_stairs.png';
+    weaponPersonArt.src = 'assets/weapon_person.png';
+    clothingPersonArt.src = 'assets/clothing_person.png';
+    swordFoxArt.src = 'assets/sword_fox.png';
+    nekoClawsArt.src = 'assets/neko_claws.png';
+    combatAttackSheet.src = 'assets/combat_attack_sheet.png';
+    combatDefendSheet.src = 'assets/combat_defend_sheet.png';
+    nekoAttackSheet.src = 'assets/neko_attack_sheet.png';
+
+    // If already cached & complete before handlers, kick off manually
+    if (sheet.complete && sheet.naturalWidth > 0) {
+      sheet.onload();
+    } else {
+      // Always start loop soon so room still draws even if images lag
+      setTimeout(startGameLoop, 200);
+    }
+
+    // True background pixels: bright + low color (won't eat peach skin / orange onesie / green hair)
+    function isBgPixel(r, g, b) {
+      const maxc = Math.max(r, g, b);
+      const minc = Math.min(r, g, b);
+      const lum = (r + g + b) / 3;
+      const sat = maxc - minc;
+      return lum >= 210 && sat <= 28;
+    }
+
+    // Flood-fill white/near-white from the edges so enclosed white (ears, tail tip) stays
+    function stripWhiteBackground(data, w, h) {
+      const n = w * h;
+      const bg = new Uint8Array(n); // 1 = background
+      const stack = [];
+
+      function trySeed(x, y) {
+        if (x < 0 || y < 0 || x >= w || y >= h) return;
+        const i = y * w + x;
+        if (bg[i]) return;
+        const p = i * 4;
+        if (isBgPixel(data[p], data[p + 1], data[p + 2])) {
+          bg[i] = 1;
+          stack.push(i);
+        }
       }
-      offCtx.putImageData(imgData, 0, 0);
-      return off;
+
+      // Seed from all edge pixels
+      for (let x = 0; x < w; x++) { trySeed(x, 0); trySeed(x, h - 1); }
+      for (let y = 0; y < h; y++) { trySeed(0, y); trySeed(w - 1, y); }
+
+      while (stack.length) {
+        const i = stack.pop();
+        const x = i % w;
+        const y = (i - x) / w;
+        // 4-neighborhood
+        const neighbors = [i - 1, i + 1, i - w, i + w];
+        for (let k = 0; k < 4; k++) {
+          const j = neighbors[k];
+          if (j < 0 || j >= n) continue;
+          if (bg[j]) continue;
+          // Keep within image row for left/right
+          if (k === 0 && x === 0) continue;
+          if (k === 1 && x === w - 1) continue;
+          const p = j * 4;
+          if (isBgPixel(data[p], data[p + 1], data[p + 2])) {
+            bg[j] = 1;
+            stack.push(j);
+          }
+        }
+      }
+
+      // Clear background + soften anti-aliased halo around the cutout
+      for (let i = 0; i < n; i++) {
+        const p = i * 4;
+        if (bg[i]) {
+          data[p + 3] = 0;
+          continue;
+        }
+        const r = data[p], g = data[p + 1], b = data[p + 2];
+        const lum = (r + g + b) / 3;
+        const sat = Math.max(r, g, b) - Math.min(r, g, b);
+        // Soft near-white fringe next to background (removes the boxy halo)
+        if (lum > 200 && sat < 40) {
+          const x = i % w;
+          const y = (i - x) / w;
+          let nextToBg = false;
+          if (x > 0 && bg[i - 1]) nextToBg = true;
+          else if (x < w - 1 && bg[i + 1]) nextToBg = true;
+          else if (y > 0 && bg[i - w]) nextToBg = true;
+          else if (y < h - 1 && bg[i + w]) nextToBg = true;
+          if (nextToBg) {
+            // Fade: whiter = more transparent
+            const t = Math.min(1, Math.max(0, (lum - 200) / 55));
+            data[p + 3] = Math.floor(data[p + 3] * (1 - t * 0.92));
+          }
+        }
+      }
+    }
+
+    function getCleanFrame(frameIndex) {
+      if (aniFrameCache[frameIndex]) return aniFrameCache[frameIndex];
+      if (!sheet.complete || sheet.naturalWidth === 0 || frameW < 1 || frameH < 1) return null;
+
+      const col = frameIndex % 2, row = Math.floor(frameIndex / 2);
+      const cached = document.createElement('canvas');
+      cached.width = frameW;
+      cached.height = frameH;
+      const c = cached.getContext('2d');
+      try {
+        // Sheet is already alpha-cut (ani_sheet_trans.png) — just slice the frame
+        c.clearRect(0, 0, frameW, frameH);
+        c.drawImage(sheet, col * frameW, row * frameH, frameW, frameH, 0, 0, frameW, frameH);
+        // Optional extra cleanup if someone swaps back to the opaque sheet
+        try {
+          const imgData = c.getImageData(0, 0, frameW, frameH);
+          // Only run strip if corners are still opaque white (opaque source)
+          const d = imgData.data;
+          const cornerWhite = d[0] > 240 && d[1] > 240 && d[2] > 240 && d[3] > 200;
+          if (cornerWhite) {
+            stripWhiteBackground(d, frameW, frameH);
+            c.putImageData(imgData, 0, 0);
+          }
+        } catch (err) {
+          // file:// may block getImageData — transparent PNG doesn't need it
+        }
+        aniFrameCache[frameIndex] = cached;
+        return cached;
+      } catch (err) {
+        console.warn('Ani frame draw failed:', err.message);
+        return null;
+      }
     }
 
     function getCleanNekoFrame(frameIndex) {
-      nekoOffCtx.clearRect(0, 0, nekoFrameW, nekoFrameH);
-      nekoOffCtx.drawImage(nekoSheet, frameIndex * nekoFrameW, 0, nekoFrameW, nekoFrameH, 0, 0, nekoFrameW, nekoFrameH);
-      const imgData = nekoOffCtx.getImageData(0, 0, nekoFrameW, nekoFrameH);
-      const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 220 && data[i+1] > 220 && data[i+2] > 220) data[i+3] = 0;
-        else if (data[i] > 200 && data[i+1] > 200 && data[i+2] > 190 && Math.abs(data[i]-data[i+1]) < 20) data[i+3] = 0;
+      if (nekoFrameCache[frameIndex]) return nekoFrameCache[frameIndex];
+      if (!nekoSheet.complete || nekoSheet.naturalWidth === 0 || nekoFrameW < 1 || nekoFrameH < 1) return null;
+
+      const cached = document.createElement('canvas');
+      cached.width = nekoFrameW;
+      cached.height = nekoFrameH;
+      const c = cached.getContext('2d');
+      try {
+        const fi = Math.max(0, Math.min(NEKO_FRAME_COUNT - 1, frameIndex));
+        c.drawImage(nekoSheet, fi * nekoFrameW, 0, nekoFrameW, nekoFrameH, 0, 0, nekoFrameW, nekoFrameH);
+        try {
+          const imgData = c.getImageData(0, 0, nekoFrameW, nekoFrameH);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const lum = (r + g + b) / 3;
+            // black / near-black bg
+            if (lum < 22) { data[i + 3] = 0; continue; }
+            // white / near-white labels
+            if (r > 220 && g > 220 && b > 220) data[i + 3] = 0;
+            else if (r > 200 && g > 200 && b > 190 && Math.abs(r - g) < 20) data[i + 3] = 0;
+          }
+          c.putImageData(imgData, 0, 0);
+        } catch (err) {
+          console.warn('Neko background strip skipped:', err.message);
+        }
+        nekoFrameCache[frameIndex] = cached;
+        return cached;
+      } catch (err) {
+        console.warn('Neko frame draw failed:', err.message);
+        return null;
       }
-      nekoOffCtx.putImageData(imgData, 0, 0);
-      return nekoOff;
     }
 
     function changeRoom(target, spawnX, spawnY) {
+      if (!rooms[target]) {
+        console.warn('Unknown room:', target);
+        return;
+      }
       currentRoom = target;
-      activeMenu = null;
+      if (target !== 'warehouseBattle') {
+        combat.active = false;
+        activeMenu = null;
+      }
       ani.x = spawnX; ani.y = spawnY;
       ani.targetX = spawnX; ani.targetY = spawnY;
       neko.x = spawnX - 90;
@@ -215,6 +563,330 @@
       neko.targetX = neko.x;
       neko.targetY = neko.y;
       roomLabel.textContent = rooms[currentRoom].name;
+    }
+
+    function startWarehouseBattle() {
+      combat.active = true;
+      combat.turn = 'ani';
+      combat.dummyHp = combat.dummyMaxHp;
+      combat.defending.ani = false;
+      combat.defending.neko = false;
+      combat.log = "Ani's turn — choose Attack or Defend.";
+      combat.won = false;
+      combat.anim = null;
+      // Spawn already standing above the speech bar (left half)
+      changeRoom('warehouseBattle', 140, 200);
+      neko.x = 40; neko.y = 220;
+      neko.targetX = neko.x; neko.targetY = neko.y;
+      activeMenu = 'combat';
+    }
+
+    function combatAttack() {
+      if (!combat.active || combat.won || combat.anim) return;
+      const who = combat.turn;
+      const name = who === 'ani' ? 'Ani' : 'Neko';
+      let dmg = who === 'ani' ? 8 : 7;
+      if (who === 'ani' && inventory.indexOf('fox_sword') >= 0) dmg += 3;
+      if (who === 'neko' && inventory.indexOf('neko_claws') >= 0) dmg += 3;
+      combat.defending[who] = false;
+      combat.log = name + ' attacks...';
+      // Ani: 5-frame sheet; Neko: 4-frame short-hair swing sheet (frames 1–4)
+      combat.anim = {
+        who: who,
+        type: 'attack',
+        frame: 0,
+        timer: 0,
+        maxFrames: who === 'neko' ? 4 : COMBAT_FRAMES,
+        pending: { kind: 'attack', who: who, name: name, dmg: dmg }
+      };
+    }
+
+    function combatDefend() {
+      if (!combat.active || combat.won || combat.anim) return;
+      const who = combat.turn;
+      const name = who === 'ani' ? 'Ani' : 'Neko';
+      combat.defending[who] = true;
+      combat.log = name + ' braces to defend...';
+      combat.anim = {
+        who: who,
+        type: 'defend',
+        frame: 0,
+        timer: 0,
+        maxFrames: who === 'neko' ? 2 : COMBAT_FRAMES,
+        pending: { kind: 'defend', who: who, name: name }
+      };
+    }
+
+    function finishCombatAction() {
+      if (!combat.anim || !combat.anim.pending) {
+        combat.anim = null;
+        return;
+      }
+      const p = combat.anim.pending;
+      combat.anim = null;
+
+      if (p.kind === 'attack') {
+        combat.dummyHp = Math.max(0, combat.dummyHp - p.dmg);
+        combat.log = p.name + ' hits for ' + p.dmg + '!';
+        if (combat.dummyHp <= 0) {
+          combat.won = true;
+          combat.log = p.name + ' lands the finishing blow! Training complete.';
+          activeMenu = null;
+          return;
+        }
+        dummyCounterstrike(p.name, p.who);
+      } else {
+        combat.log = p.name + ' braces to defend.';
+        dummyCounterstrike(p.name, p.who);
+      }
+      advanceCombatTurn();
+    }
+
+    function dummyCounterstrike(targetName, who) {
+      if (combat.won || combat.dummyHp <= 0) return;
+      let dmg = 4;
+      if (combat.defending[who]) {
+        dmg = 1;
+        combat.log += ' Dummy hits ' + targetName + ' for ' + dmg + ' (blocked).';
+      } else {
+        combat.log += ' Dummy hits ' + targetName + ' for ' + dmg + '.';
+      }
+    }
+
+    function advanceCombatTurn() {
+      combat.turn = combat.turn === 'ani' ? 'neko' : 'ani';
+      const next = combat.turn === 'ani' ? 'Ani' : 'Neko';
+      if (!combat.won) {
+        combat.log += '  → ' + next + "'s turn.";
+      }
+    }
+
+    // Combat sheets are 4 columns × 3 rows:
+    //   left half (cols 0-1) = Ani, right half (cols 2-3) = Neko
+    //   5 poses in a 2×3 block (reading order; 5th = bottom-right cell)
+    function getCombatPose(who, type, frameIndex) {
+      const key = 'v2_' + type + '_' + who + '_' + frameIndex;
+      if (combatFrameCache[key]) return combatFrameCache[key];
+      const sheetImg = type === 'defend' ? combatDefendSheet : combatAttackSheet;
+      if (!sheetImg.complete || !sheetImg.naturalWidth) return null;
+
+      const cols = 4;
+      const rows = 3;
+      const fw = Math.floor(sheetImg.naturalWidth / cols);
+      const fh = Math.floor(sheetImg.naturalHeight / rows);
+
+      // Local 2×3 block positions for frames 0..4
+      const localOrder = [
+        [0, 0], // 1
+        [1, 0], // 2
+        [0, 1], // 3
+        [1, 1], // 4
+        [1, 2]  // 5 (bottom-right of character block)
+      ];
+      const fi = Math.max(0, Math.min(COMBAT_FRAMES - 1, frameIndex));
+      const lc = localOrder[fi][0];
+      const lr = localOrder[fi][1];
+      // Neko is on the right half of the sheet
+      const col = who === 'neko' ? lc + 2 : lc;
+      const row = lr;
+
+      // Inset so we don't pull in neighbor poses / labels
+      const padX = Math.floor(fw * 0.06);
+      const padY = Math.floor(fh * 0.08);
+      const sx = col * fw + padX;
+      const sy = row * fh + padY;
+      const sw = fw - padX * 2;
+      const sh = fh - padY * 2;
+
+      const cached = document.createElement('canvas');
+      cached.width = sw;
+      cached.height = sh;
+      const c = cached.getContext('2d');
+      try {
+        c.clearRect(0, 0, sw, sh);
+        c.drawImage(sheetImg, sx, sy, sw, sh, 0, 0, sw, sh);
+        // Strip black / near-black sheet background
+        try {
+          const imgData = c.getImageData(0, 0, sw, sh);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const maxc = Math.max(r, g, b);
+            const minc = Math.min(r, g, b);
+            const lum = (r + g + b) / 3;
+            if (lum < 22) { data[i + 3] = 0; continue; }
+            if (lum > 230 && (maxc - minc) < 30) { data[i + 3] = 0; continue; }
+          }
+          c.putImageData(imgData, 0, 0);
+        } catch (err) { /* file:// may block */ }
+        combatFrameCache[key] = cached;
+        return cached;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    // Draw short-hair Neko from her walk sheet (overworld)
+    function drawNekoShortHair(feetX, feetY, frameIndex, scaleMul) {
+      const mul = scaleMul == null ? 1 : scaleMul;
+      const clean = getCleanNekoFrame(frameIndex);
+      const dw = nekoFrameW * neko.scale * mul;
+      const dh = nekoFrameH * neko.scale * mul;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 4, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (clean) {
+        ctx.save();
+        if (neko.facing === -1) {
+          ctx.translate(feetX, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(clean, 0, 0, nekoFrameW, nekoFrameH, -dw / 2, dy, dw, dh);
+        } else {
+          ctx.drawImage(clean, 0, 0, nekoFrameW, nekoFrameH, dx, dy, dw, dh);
+        }
+        ctx.restore();
+      }
+      return { dx: dx, dy: dy, dw: dw, dh: dh };
+    }
+
+    // Neko short-hair attack sheet: 2×2 main poses
+    // 0 wind-up, 1 mid slash, 2 follow-through, 3 idle stance
+    function getNekoSwingPose(frameIndex) {
+      const key = 'neko_swing_' + frameIndex;
+      if (combatFrameCache[key]) return combatFrameCache[key];
+      if (!nekoAttackSheet.complete || !nekoAttackSheet.naturalWidth) return null;
+
+      const cols = 2, rows = 2;
+      const fw = Math.floor(nekoAttackSheet.naturalWidth / cols);
+      const fh = Math.floor(nekoAttackSheet.naturalHeight / rows);
+      const fi = Math.max(0, Math.min(3, frameIndex));
+      const col = fi % 2;
+      const row = Math.floor(fi / 2);
+
+      // Inset: bottom row has tiny reference art — crop more from bottom
+      const padX = Math.floor(fw * 0.06);
+      const padTop = Math.floor(fh * 0.06);
+      const padBot = row === 1 ? Math.floor(fh * 0.22) : Math.floor(fh * 0.08);
+      const sx = col * fw + padX;
+      const sy = row * fh + padTop;
+      const sw = fw - padX * 2;
+      const sh = fh - padTop - padBot;
+
+      const cached = document.createElement('canvas');
+      cached.width = sw;
+      cached.height = sh;
+      const c = cached.getContext('2d');
+      try {
+        c.clearRect(0, 0, sw, sh);
+        c.drawImage(nekoAttackSheet, sx, sy, sw, sh, 0, 0, sw, sh);
+        try {
+          const imgData = c.getImageData(0, 0, sw, sh);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            if (lum < 22) data[i + 3] = 0;
+          }
+          c.putImageData(imgData, 0, 0);
+        } catch (err) { /* file:// */ }
+        combatFrameCache[key] = cached;
+        return cached;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    // Draw fighter — Ani: long swing sheets; Neko: short-hair swing sheet 1–4 for attack
+    function drawCombatFighter(who, feetX, feetY) {
+      const targetH = frameH * ani.scale * 0.95;
+
+      // ---- Neko: short-hair only ----
+      if (who === 'neko') {
+        let pose = null;
+        if (combat.anim && combat.anim.who === 'neko' && combat.anim.type === 'attack') {
+          // Swing frames 1–4 (indices 0–3)
+          pose = getNekoSwingPose(combat.anim.frame);
+        } else if (combat.anim && combat.anim.who === 'neko' && combat.anim.type === 'defend') {
+          // Defend: idle stance (frame 4) then slight crouch (frame 1)
+          pose = getNekoSwingPose(combat.anim.frame === 0 ? 3 : 0);
+        } else if (combat.defending.neko) {
+          pose = getNekoSwingPose(3); // idle combat stance
+        } else {
+          pose = getNekoSwingPose(3); // ready idle in battle
+        }
+
+        if (!pose) {
+          drawNekoShortHair(feetX, feetY, NEKO_IDLE, 0.95);
+        } else {
+          const sc = targetH / pose.height;
+          const dw = pose.width * sc;
+          const dh = pose.height * sc;
+          const dx = feetX - dw / 2;
+          const dy = feetY - dh;
+          ctx.fillStyle = 'rgba(0,0,0,0.28)';
+          ctx.beginPath();
+          ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.drawImage(pose, dx, dy, dw, dh);
+
+          if (combat.active && !combat.won && combat.turn === 'neko' && !combat.anim) {
+            ctx.fillStyle = '#c9a0ff';
+            ctx.font = 'bold 11px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('▼', feetX, dy - 6);
+            ctx.textAlign = 'left';
+          }
+        }
+        return;
+      }
+
+      // ---- Ani: attack/defend swing sheets ----
+      let type = 'attack';
+      let frame = 0;
+      if (combat.defending.ani && !(combat.anim && combat.anim.who === 'ani')) {
+        type = 'defend';
+        frame = 0;
+      }
+      if (combat.anim && combat.anim.who === 'ani') {
+        type = combat.anim.type;
+        frame = combat.anim.frame;
+      }
+
+      const pose = getCombatPose('ani', type, frame);
+
+      if (!pose) {
+        const clean = getCleanFrame(IDLE_FRAME);
+        if (clean) {
+          const dw = frameW * ani.scale * 0.9, dh = frameH * ani.scale * 0.9;
+          ctx.drawImage(clean, 0, 0, frameW, frameH, feetX - dw / 2, feetY - dh, dw, dh);
+        }
+        return;
+      }
+
+      const sc = targetH / pose.height;
+      const dw = pose.width * sc;
+      const dh = pose.height * sc;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.drawImage(pose, dx, dy, dw, dh);
+
+      if (combat.active && !combat.won && combat.turn === 'ani' && !combat.anim) {
+        ctx.fillStyle = '#ff9a4a';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('▼', feetX, dy - 6);
+        ctx.textAlign = 'left';
+      }
     }
 
     canvas.addEventListener('click', (e) => {
@@ -234,15 +906,130 @@
           activeMenu = null;
           return;
         }
-        // Future: clickable map locations go here
+        // Travel to map locations
+        for (let i = 0; i < mapLocations.length; i++) {
+          const loc = mapLocations[i];
+          if (loc.locked) continue;
+          if (mx >= loc.x && mx <= loc.x + loc.w && my >= loc.y && my <= loc.y + loc.h) {
+            activeMenu = null;
+            changeRoom(loc.target, loc.spawnX, loc.spawnY);
+            return;
+          }
+        }
         return;
       }
 
-      // Van click in clearing
-      if (currentRoom === 'clearing') {
+      if (activeMenu === 'weaponShop') {
+        // Select item rows
+        if (mx >= 95 && mx <= 545 && my >= 135 && my <= 210) {
+          shopSelected = 0; // fox blade
+          return;
+        }
+        if (mx >= 95 && mx <= 545 && my >= 215 && my <= 290) {
+          shopSelected = 1; // neko claws
+          return;
+        }
+        // Buy button
+        if (mx >= 360 && mx <= 440 && my >= 310 && my <= 350) {
+          const items = [
+            { id: 'fox_sword', name: 'Fox Blade', price: 20 },
+            { id: 'neko_claws', name: 'Neko Claws', price: 20 }
+          ];
+          const item = items[shopSelected] || items[0];
+          if (inventory.indexOf(item.id) >= 0) {
+            shopToast = 'You already own ' + item.name + '.';
+            shopToastTimer = 120;
+          } else if (playerGold < item.price) {
+            shopToast = 'Not enough gold! (need ' + item.price + ')';
+            shopToastTimer = 120;
+          } else {
+            playerGold -= item.price;
+            inventory.push(item.id);
+            shopToast = 'Purchased ' + item.name + '!';
+            shopToastTimer = 120;
+          }
+          return;
+        }
+        // Cancel button
+        if (mx >= 460 && mx <= 550 && my >= 310 && my <= 350) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
+        // Click outside panel closes
+        if (mx < 70 || mx > 570 || my < 60 || my > 400) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
+        return;
+      }
+
+      if (activeMenu === 'clothingShop') {
+        // Close button
+        if (mx >= 460 && mx <= 550 && my >= 300 && my <= 340) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
+        // Outside panel closes
+        if (mx < 70 || mx > 570 || my < 70 || my > 380) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
+        return;
+      }
+
+      // Whiskers van click on the roof → map
+      if (currentRoom === 'garageTopFloor') {
         if (mx >= vanHitbox.x && mx <= vanHitbox.x + vanHitbox.w &&
             my >= vanHitbox.y && my <= vanHitbox.y + vanHitbox.h) {
           activeMenu = 'map';
+          return;
+        }
+      }
+
+      // Weapons merchant click
+      if (currentRoom === 'weaponStore') {
+        const n = weaponNpcHitbox;
+        if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+          activeMenu = 'weaponShop';
+          shopSelected = 0;
+          shopToast = '';
+          return;
+        }
+      }
+
+      // Clothing merchant click
+      if (currentRoom === 'clothingStore') {
+        const n = clothingNpcHitbox;
+        if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+          activeMenu = 'clothingShop';
+          shopToast = '';
+          return;
+        }
+      }
+
+      // Warehouse training box → start turn-based fight
+      if (currentRoom === 'warehouse') {
+        const b = trainingBoxHitbox;
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+          startWarehouseBattle();
+          return;
+        }
+      }
+
+      // Combat menu (attack / defend) — blocked while anim plays
+      if (currentRoom === 'warehouseBattle' && combat.active && !combat.won && !combat.anim) {
+        // Attack button
+        if (mx >= 160 && mx <= 300 && my >= 400 && my <= 450) {
+          combatAttack();
+          return;
+        }
+        // Defend button
+        if (mx >= 340 && mx <= 480 && my >= 400 && my <= 450) {
+          combatDefend();
           return;
         }
       }
@@ -255,13 +1042,50 @@
         }
       }
 
-      // Walk to clicked position
-      ani.targetX = mx - (frameW * ani.scale) / 2;
-      ani.targetY = Math.min(Math.max(my - (frameH * ani.scale) * 0.65, 30), 300);
+      // No free walking while combat menu is up
+      if (activeMenu === 'combat' && combat.active && !combat.won) return;
+
+      // Walk to clicked position (keep feet in walkable band)
+      const aw = frameW * ani.scale;
+      const ah = frameH * ani.scale;
+      ani.targetX = Math.min(Math.max(mx - aw / 2, -aw * 0.2), canvas.width - aw * 0.3);
+      ani.targetY = Math.min(Math.max(my - ah * 0.75, 40), canvas.height - ah * 0.85);
     });
 
     function update() {
-      if (activeMenu) return; // freeze movement while menu is open
+      if (shopToastTimer > 0) shopToastTimer--;
+
+      // Advance combat attack/defend animation
+      if (combat.anim) {
+        combat.anim.timer++;
+        if (combat.anim.timer >= COMBAT_FRAME_TICKS) {
+          combat.anim.timer = 0;
+          combat.anim.frame++;
+          const maxF = combat.anim.maxFrames || COMBAT_FRAMES;
+          if (combat.anim.frame >= maxF) {
+            finishCombatAction();
+          }
+        }
+      }
+
+      // Freeze free walking during map/shop menus
+      if (activeMenu && activeMenu !== 'combat') return;
+      // During combat, park both girls just above the speech/combat bar (y≈370)
+      if (activeMenu === 'combat' && combat.active && !combat.won) {
+        // Feet sit on the floor strip above the menu; left half of screen
+        const combatFeetY = 368;
+        const aniDrawH = frameH * ani.scale * 0.95;
+        const nekoDrawH = nekoFrameH * neko.scale * 0.95;
+        // targetX/Y is top-left of walk sprite — convert from desired feet pos
+        ani.targetX = 200 - (frameW * ani.scale * 0.95) / 2;
+        ani.targetY = combatFeetY - aniDrawH;
+        neko.targetX = 95 - (nekoFrameW * neko.scale * 0.95) / 2;
+        neko.targetY = combatFeetY - nekoDrawH;
+        if (!combat.anim) {
+          ani.frame = IDLE_FRAME;
+          neko.frame = NEKO_IDLE;
+        }
+      }
 
       const dx = ani.targetX - ani.x, dy = ani.targetY - ani.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
@@ -339,6 +1163,165 @@
       ctx.textAlign = 'center';
       ctx.fillText(text, x + 45, y + 19);
       ctx.textAlign = 'left';
+    }
+
+    // Sign + glowing zone drawn ON the door hitbox so the click target is obvious
+    // prop: null | 'bike' | 'bench' — fills the lower part of the hitbox
+    function drawTravelMarker(x, y, w, h, text, prop) {
+      // Soft gold pad over the whole clickable area
+      ctx.fillStyle = 'rgba(232, 201, 74, 0.14)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(232, 201, 74, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 5]);
+      ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+      ctx.setLineDash([]);
+
+      // Sign centered near top of the hotspot
+      const signW = 90;
+      const sx = Math.floor(x + (w - signW) / 2);
+      const sy = Math.floor(y + 8);
+      drawStreetSign(sx, sy, text);
+
+      // Prop fills the bottom of the hitbox (makes the exit feel solid / clickable)
+      const groundY = y + h - 6;
+      if (prop === 'bike') {
+        drawBike(x + Math.floor((w - 62) / 2), groundY);
+      } else if (prop === 'bench') {
+        drawParkBench(x + 8, groundY, w - 16);
+      }
+    }
+
+    // Street bike — sits under the GARAGE sign, fills the exit hitbox
+    function drawBike(x, groundY) {
+      // soft shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(x + 30, groundY + 2, 28, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // wheels
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x + 12, groundY - 2, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 50, groundY - 2, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#6a6a62';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x + 12, groundY - 2, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 50, groundY - 2, 6, 0, Math.PI * 2); ctx.stroke();
+
+      // frame (rust orange)
+      ctx.strokeStyle = '#c45c26';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + 12, groundY - 2);
+      ctx.lineTo(x + 28, groundY - 28);
+      ctx.lineTo(x + 44, groundY - 12);
+      ctx.lineTo(x + 50, groundY - 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 28, groundY - 28);
+      ctx.lineTo(x + 18, groundY - 12);
+      ctx.lineTo(x + 44, groundY - 12);
+      ctx.stroke();
+
+      // seat
+      ctx.fillStyle = '#2a2a26';
+      ctx.fillRect(x + 22, groundY - 32, 14, 5);
+      // handlebars
+      ctx.strokeStyle = '#3a3a36';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 44, groundY - 12);
+      ctx.lineTo(x + 52, groundY - 30);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 46, groundY - 30);
+      ctx.lineTo(x + 58, groundY - 28);
+      ctx.stroke();
+    }
+
+    // Park bench — sits under the CITY sign, fills the exit hitbox
+    function drawParkBench(x, groundY, w) {
+      const bw = Math.max(60, w);
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x + bw / 2, groundY + 2, bw * 0.42, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // legs
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(x + 8, groundY - 20, 7, 20);
+      ctx.fillRect(x + bw - 15, groundY - 20, 7, 20);
+      // seat planks
+      ctx.fillStyle = '#7a5236';
+      ctx.fillRect(x + 2, groundY - 24, bw - 4, 7);
+      ctx.fillStyle = '#6a452c';
+      ctx.fillRect(x + 2, groundY - 28, bw - 4, 4);
+      // backrest posts
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(x + 8, groundY - 48, 6, 24);
+      ctx.fillRect(x + bw - 14, groundY - 48, 6, 24);
+      // back planks
+      ctx.fillStyle = '#8a5c3c';
+      ctx.fillRect(x + 4, groundY - 50, bw - 8, 5);
+      ctx.fillStyle = '#7a5236';
+      ctx.fillRect(x + 4, groundY - 42, bw - 8, 5);
+    }
+
+    // Small concrete stairwell booth (outside clearing top level)
+    function drawStairwellBooth(x, groundY) {
+      const w = 78;
+      const h = 96;
+
+      // side depth (isometric-ish block)
+      ctx.fillStyle = '#55554e';
+      ctx.beginPath();
+      ctx.moveTo(x + w, groundY - h);
+      ctx.lineTo(x + w + 14, groundY - h + 10);
+      ctx.lineTo(x + w + 14, groundY + 6);
+      ctx.lineTo(x + w, groundY);
+      ctx.closePath();
+      ctx.fill();
+
+      // main box
+      ctx.fillStyle = '#6a6a62';
+      ctx.fillRect(x, groundY - h, w, h);
+      // wall seams
+      ctx.strokeStyle = 'rgba(30,30,25,0.25)';
+      ctx.lineWidth = 2;
+      for (let sy = groundY - h + 18; sy < groundY - 10; sy += 22) {
+        ctx.beginPath();
+        ctx.moveTo(x + 4, sy);
+        ctx.lineTo(x + w - 4, sy);
+        ctx.stroke();
+      }
+
+      // flat roof cap
+      ctx.fillStyle = '#3f3f38';
+      ctx.fillRect(x - 6, groundY - h - 12, w + 14, 14);
+      ctx.fillStyle = '#2a2a26';
+      ctx.fillRect(x - 4, groundY - h - 8, w + 10, 6);
+
+      // yellow STAIRS plate
+      ctx.fillStyle = '#2a2a26';
+      ctx.fillRect(x + 10, groundY - h + 8, w - 20, 16);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('STAIRS', x + w / 2, groundY - h + 20);
+      ctx.textAlign = 'left';
+
+      // door recessed in face
+      drawShopDoor(x + 14, groundY - 72, '#2a2a26');
+
+      // small concrete pad in front
+      ctx.fillStyle = '#7a7a70';
+      ctx.fillRect(x - 4, groundY - 2, w + 10, 10);
+      ctx.fillStyle = 'rgba(232,201,74,0.35)';
+      ctx.fillRect(x + 10, groundY, w - 20, 3);
     }
 
     function drawSword(cx, cy, angle, color) {
@@ -431,60 +1414,102 @@
     }
 
     // ===== EXTERIOR SHOPS =====
+    // Draw image into a rect with cover-crop (preserve aspect, fill box)
+    function drawImageCover(img, dx, dy, dw, dh, focusX, focusY) {
+      if (!img || !img.complete || !img.naturalWidth) return false;
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      const ir = iw / ih, tr = dw / dh;
+      let sx, sy, sw, sh;
+      if (ir > tr) {
+        sh = ih;
+        sw = sh * tr;
+        const fx = focusX == null ? 0.5 : focusX;
+        sx = Math.max(0, Math.min(iw - sw, iw * fx - sw / 2));
+        sy = 0;
+      } else {
+        sw = iw;
+        sh = sw / tr;
+        const fy = focusY == null ? 0.5 : focusY;
+        sx = 0;
+        sy = Math.max(0, Math.min(ih - sh, ih * fy - sh / 2));
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+      return true;
+    }
+
     function drawWeaponStore(x, groundY, w, h) {
       const y = groundY - h;
-      ctx.fillStyle = '#5a4a42'; ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = shadeColor('#5a4a42', -20); ctx.fillRect(x, y, w, 8);
-      ctx.fillStyle = '#3d2818'; ctx.fillRect(x+10, y+14, w-20, 24);
-      ctx.fillStyle = '#d9b25a'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('WEAPONS', x+w/2, y+31); ctx.textAlign = 'left';
-      ctx.fillStyle = '#e8d98b';
-      ctx.fillRect(x+12, y+h-90, 18, 22); ctx.fillRect(x+w-30, y+h-90, 18, 22);
-      drawSword(x+w/2-6, y+h-80, -0.5, '#c9c9d0');
-      drawSword(x+w/2+6, y+h-80, 0.5, '#c9c9d0');
-      drawShopDoor(x+w/2-25, groundY-70, '#3a2a20');
+      // Concept art exterior — Arcane Armory alley facade
+      const drawn = drawImageCover(weaponExt, x, y, w, h, 0.58, 0.55);
+      if (!drawn) {
+        // Fallback procedural if art hasn't loaded yet
+        ctx.fillStyle = '#5a4a42'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = shadeColor('#5a4a42', -20); ctx.fillRect(x, y, w, 8);
+        ctx.fillStyle = '#3d2818'; ctx.fillRect(x + 10, y + 14, w - 20, 24);
+        ctx.fillStyle = '#d9b25a'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText('WEAPONS', x + w / 2, y + 31); ctx.textAlign = 'left';
+        drawShopDoor(x + w / 2 - 25, groundY - 70, '#3a2a20');
+      } else {
+        // Soft frame + enter hint over the art
+        ctx.strokeStyle = 'rgba(80, 255, 140, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x + 6, y + 6, w - 12, 18);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('ARCANE ARMORY', x + w / 2, y + 19);
+        ctx.textAlign = 'left';
+      }
     }
 
     function drawClothingStore(x, groundY, w, h) {
       const y = groundY - h;
-      ctx.fillStyle = '#a86b8a'; ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = shadeColor('#a86b8a', -20); ctx.fillRect(x, y, w, 8);
-      const awningY = y + h - 96;
-      ctx.fillStyle = '#e8d98b'; ctx.fillRect(x+8, awningY, w-16, 10);
-      ctx.fillStyle = '#d9556b';
-      for (let i = 0; i < w-16; i += 12) ctx.fillRect(x+8+i, awningY, 6, 10);
-      ctx.fillStyle = '#f2f2ea';
-      for (let i = 0; i < w-16; i += 12) {
-        ctx.beginPath(); ctx.arc(x+8+i+6, awningY+10, 5, 0, Math.PI); ctx.fill();
+      // Concept art exterior — mannequin storefront
+      const drawn = drawImageCover(clothingExt, x, y, w, h, 0.5, 0.52);
+      if (!drawn) {
+        ctx.fillStyle = '#a86b8a'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = shadeColor('#a86b8a', -20); ctx.fillRect(x, y, w, 8);
+        ctx.fillStyle = '#3d2818'; ctx.font = '11px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText('CLOTHES', x + w / 2, y + 20); ctx.textAlign = 'left';
+        drawShopDoor(x + w / 2 - 25, groundY - 70, '#7a4a5a');
+      } else {
+        ctx.strokeStyle = 'rgba(80, 255, 140, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x + 6, y + 6, w - 12, 18);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('ARCANE ATTIRE', x + w / 2, y + 19);
+        ctx.textAlign = 'left';
       }
-      ctx.fillStyle = '#cfe8ec'; ctx.fillRect(x+12, awningY+12, w-24, 40);
-      drawShirt(x+24, awningY+20, '#d9556b');
-      drawShirt(x+48, awningY+20, '#5a8fc9');
-      drawShirt(x+72, awningY+20, '#e8c94a');
-      ctx.fillStyle = '#3d2818'; ctx.font = '11px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('CLOTHES', x+w/2, y+20); ctx.textAlign = 'left';
-      drawShopDoor(x+w/2-25, groundY-70, '#7a4a5a');
     }
 
     function drawBarShop(x, groundY, w, h) {
       const y = groundY - h;
-      ctx.fillStyle = '#4a3a2a'; ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = shadeColor('#4a3a2a', -20); ctx.fillRect(x, y, w, 8);
-      ctx.fillStyle = '#f2c14a';
-      ctx.fillRect(x+14, y+h-90, 20, 24); ctx.fillRect(x+w-34, y+h-90, 20, 24);
-      ctx.strokeStyle = '#4a3a2a'; ctx.lineWidth = 2;
-      [14, w-34].forEach(off => {
-        ctx.beginPath();
-        ctx.moveTo(x+off, y+h-78); ctx.lineTo(x+off+20, y+h-78);
-        ctx.moveTo(x+off+10, y+h-90); ctx.lineTo(x+off+10, y+h-66); ctx.stroke();
-      });
-      ctx.strokeStyle = '#2a1f18'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(x+w/2, y+6); ctx.lineTo(x+w/2, y-10); ctx.stroke();
-      ctx.fillStyle = '#2a1f18'; ctx.fillRect(x+w/2-30, y-26, 60, 20);
-      ctx.fillStyle = '#e8c94a'; ctx.font = '11px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('THE BAR', x+w/2, y-12); ctx.textAlign = 'left';
-      drawBarrel(x+w/2-45, groundY-22); drawBarrel(x+w/2+33, groundY-22);
-      drawShopDoor(x+w/2-25, groundY-70, '#2a1f18');
+      // Concept art exterior — The Eldritch Tap
+      const drawn = drawImageCover(barExt, x, y, w, h, 0.5, 0.52);
+      if (!drawn) {
+        ctx.fillStyle = '#4a3a2a'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = shadeColor('#4a3a2a', -20); ctx.fillRect(x, y, w, 8);
+        ctx.fillStyle = '#e8c94a'; ctx.font = '11px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText('THE BAR', x + w / 2, y + 20); ctx.textAlign = 'left';
+        drawShopDoor(x + w / 2 - 25, groundY - 70, '#2a1f18');
+      } else {
+        ctx.strokeStyle = 'rgba(80, 255, 140, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(x + 4, y + 6, w - 8, 18);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 10px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('ELDRITCH TAP', x + w / 2, y + 19);
+        ctx.textAlign = 'left';
+      }
     }
 
     // ===== BROKEN BUILDING + GARAGE =====
@@ -594,27 +1619,35 @@
     }
 
     // Draw car from the car_sheet.png (0=red Flare, 1=black Shadow, 2=van)
+    // Source rects measured from car_sheet.png top-row 3/4 views (full vehicles, no side/ortho cuts)
     function drawCarSprite(x, groundY, which, scale) {
       if (!carSheet.complete || carSheet.naturalWidth === 0) return;
 
-      // Approximate source rects for the top-row 3/4 views
-      // These may need slight tweaking once we see them in-game
       const srcs = [
-        { sx: 30,  sy: 30,  sw: 540, sh: 290 }, // red Flare
-        { sx: 620, sy: 30,  sw: 540, sh: 290 }, // black Shadow
-        { sx: 1220,sy: 20,  sw: 580, sh: 340 }  // Whiskers van
+        { sx: 50,  sy: 120, sw: 410, sh: 255 }, // red Flare Civic
+        { sx: 490, sy: 170, sw: 390, sh: 245 }, // black Shadow GT-R
+        { sx: 900, sy: 70,  sw: 420, sh: 340 }  // Whiskers van (ears + roof rack)
       ];
       const s = srcs[which] || srcs[0];
-      const dw = s.sw * scale;
-      const dh = s.sh * scale;
+      // Clamp to sheet bounds so crops never spill into neighboring art
+      const maxW = carSheet.naturalWidth;
+      const maxH = carSheet.naturalHeight;
+      const sx = Math.max(0, Math.min(s.sx, maxW - 1));
+      const sy = Math.max(0, Math.min(s.sy, maxH - 1));
+      const sw = Math.min(s.sw, maxW - sx);
+      const sh = Math.min(s.sh, maxH - sy);
 
-      // soft shadow
+      const dw = sw * scale;
+      const dh = sh * scale;
+
+      // soft shadow under tires
       ctx.fillStyle = 'rgba(0,0,0,0.32)';
       ctx.beginPath();
-      ctx.ellipse(x + dw * 0.48, groundY + 5, dw * 0.46, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + dw * 0.48, groundY + 4, dw * 0.42, 9, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.drawImage(carSheet, s.sx, s.sy, s.sw, s.sh, x, groundY - dh + 12, dw, dh);
+      // Align bottom of sprite to ground (small lift so tires sit on the pavement)
+      ctx.drawImage(carSheet, sx, sy, sw, sh, x, groundY - dh + 8, dw, dh);
     }
 
     function drawStairwell(x, groundY, w, h) {
@@ -757,257 +1790,48 @@
       const W = canvas.width;
       const H = canvas.height;
 
-      ctx.fillStyle = '#5c5c54';
-      ctx.fillRect(0, 0, W, H);
-
-      ctx.fillStyle = 'rgba(30,35,25,0.2)';
-      for (let i = 0; i < 4; i++) {
-        const sx = 40 + i * (W / 4);
-        ctx.fillRect(sx, 0, 5, H * 0.4);
+      // Stairs tower concept art
+      const drawn = drawImageCover(garageStairsArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#5c5c54';
+        ctx.fillRect(0, 0, W, H);
       }
 
-      const stepCount = 10;
-      const stepW = W * 0.5;
-      const stepH = (H * 0.65) / stepCount;
-      const baseX = W * 0.25;
-      const baseY = H * 0.92;
-
-      for (let i = 0; i < stepCount; i++) {
-        const sx = baseX + i * 6;
-        const sy = baseY - i * stepH;
-        const sw = stepW - i * 12;
-
-        ctx.fillStyle = '#8a8a80';
-        ctx.fillRect(sx, sy - stepH, sw, stepH);
-        ctx.fillStyle = '#4a4a42';
-        ctx.fillRect(sx, sy - 6, sw, 6);
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
-        ctx.fillRect(sx, sy - stepH, sw, 3);
-      }
-
-      ctx.strokeStyle = '#3a3a34';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(baseX + stepW + 10, baseY);
-      ctx.lineTo(baseX + stepCount * 6 + (stepW - stepCount * 12) + 10, baseY - stepCount * stepH);
-      ctx.stroke();
-
-      ctx.lineWidth = 3;
-      for (let i = 0; i <= stepCount; i += 2) {
-        const px = baseX + i * 6 + stepW - i * 12 + 10;
-        const py = baseY - i * stepH;
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineTo(px, py + 20);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = '#2a2a26';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(W * 0.5, 0);
-      ctx.lineTo(W * 0.5, 40);
-      ctx.stroke();
-      ctx.fillStyle = '#f2e6a0';
-      ctx.beginPath();
-      ctx.arc(W * 0.5, 48, 8, 0, Math.PI * 2);
-      ctx.fill();
-
-      drawShopDoor(baseX - 60, baseY - 70, '#2a2a26');
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = '12px Courier New';
-      ctx.fillText('◄ Garage', baseX - 75, baseY - 78);
-
-      const topX = baseX + stepCount * 6 + (stepW - stepCount * 12) - 30;
-      const topY = baseY - stepCount * stepH;
-      drawShopDoor(topX, topY - 70, '#2a2a26');
-      ctx.fillStyle = '#e8c94a';
-      ctx.fillText('Top Floor ►', topX - 10, topY - 78);
+      drawGaragePad(40, 360, 100, 100, '◄ Garage');
+      drawGaragePad(480, 80, 120, 160, 'Roof ►');
     }
 
-    // ===== TOP FLOOR =====
+    // ===== ROOF (final outdoor deck — van + map) =====
     function drawGarageTopFloor() {
       const W = canvas.width;
       const H = canvas.height;
 
-      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
-      wallGrad.addColorStop(0, '#6a6a62');
-      wallGrad.addColorStop(1, '#54544c');
-      ctx.fillStyle = wallGrad;
-      ctx.fillRect(0, 0, W, H * 0.75);
-
-      ctx.fillStyle = 'rgba(30,35,25,0.2)';
-      for (let i = 0; i < 6; i++) {
-        const sx = 20 + i * (W / 6) + Math.sin(i) * 10;
-        ctx.beginPath();
-        ctx.moveTo(sx, 0);
-        ctx.lineTo(sx + 4, H * (0.3 + (i % 3) * 0.15));
-        ctx.lineTo(sx - 4, H * (0.3 + (i % 3) * 0.15));
-        ctx.closePath();
-        ctx.fill();
+      // Roof deck art
+      const drawn = drawImageCover(garageRoofArt, 0, 0, W, H, 0.55, 0.5);
+      if (!drawn) {
+        ctx.fillStyle = '#54544c';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#8fa0b8';
+        ctx.fillRect(0, 0, W, H * 0.2);
       }
 
-      ctx.fillStyle = '#8fa0b8';
-      ctx.fillRect(0, 0, W, H * 0.12);
+      // Whiskers van art from car_sheet (which = 2)
+      const vanX = 190;
+      const vanGroundY = H * 0.88;
+      drawCarSprite(vanX, vanGroundY, 2, 0.48);
 
-      ctx.fillStyle = '#3f3f38';
-      for (let x = 40; x < W; x += 160) {
-        ctx.fillRect(x, H * 0.12, 24, H * 0.05);
-      }
+      // Keep hitbox aligned to drawn van
+      vanHitbox.x = vanX;
+      vanHitbox.y = vanGroundY - 100;
+      vanHitbox.w = 210;
+      vanHitbox.h = 110;
 
-      drawGaragePillar(180, H * 0.17, H * 0.58);
-      drawGaragePillar(480, H * 0.17, H * 0.58);
-
-      ctx.fillStyle = '#7a7a70';
-      ctx.fillRect(0, H * 0.75, W, H * 0.25);
-
-      ctx.fillStyle = 'rgba(40,45,35,0.3)';
-      drawPuddle(250, H * 0.85, 26, 8);
-      drawPuddle(560, H * 0.9, 20, 6);
-
-      ctx.strokeStyle = 'rgba(232,201,74,0.35)';
-      ctx.lineWidth = 3;
-      for (let x = 30; x < W; x += 130) {
-        ctx.beginPath();
-        ctx.moveTo(x, H * 0.78);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-      }
-
-      ctx.fillStyle = '#5c5c54';
-      ctx.fillRect(0, H * 0.66, W, 10);
-
-      drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
-
-      drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = '12px Courier New';
-      ctx.fillText('Outside ►', 5, H * 0.75 - 78);
-    }
-
-    // ===== OUTSIDE CLEARING =====
-    function drawClearing() {
-      const W = canvas.width;
-      const H = canvas.height;
-
-      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.5);
-      sky.addColorStop(0, '#8f9aab');
-      sky.addColorStop(1, '#c4c2b8');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, W, H * 0.5);
-
-      ctx.fillStyle = '#6a7a5a';
-      for (let x = 0; x < W; x += 40) {
-        const h = 20 + (x % 80 === 0 ? 10 : 0);
-        ctx.beginPath();
-        ctx.arc(x, H * 0.5, h, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = '#4a4a48';
-      ctx.fillRect(0, H * 0.5, W * 0.65, H * 0.5);
-
-      ctx.strokeStyle = 'rgba(232,201,74,0.3)';
-      ctx.lineWidth = 3;
-      for (let x = 20; x < W * 0.6; x += 90) {
-        ctx.beginPath();
-        ctx.moveTo(x, H * 0.55);
-        ctx.lineTo(x, H * 0.95);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = 'rgba(20,20,18,0.4)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(80, H * 0.6);
-      ctx.lineTo(140, H * 0.72);
-      ctx.lineTo(110, H * 0.85);
-      ctx.stroke();
-
-      ctx.fillStyle = '#7a8a5a';
-      drawPuddle(40, H * 0.52, 18, 6);
-      drawPuddle(W * 0.6 - 10, H * 0.8, 16, 5);
-
-      ctx.fillStyle = '#9a9284';
-      ctx.fillRect(W * 0.65, H * 0.5, W * 0.35, H * 0.5);
-
-      ctx.fillStyle = '#7a7264';
-      for (let i = 0; i < 120; i++) {
-        const gx = W * 0.65 + Math.random() * (W * 0.35);
-        const gy = H * 0.5 + Math.random() * (H * 0.5);
-        ctx.fillRect(gx, gy, 2, 2);
-      }
-      ctx.fillStyle = '#b8b0a0';
-      for (let i = 0; i < 60; i++) {
-        const gx = W * 0.65 + Math.random() * (W * 0.35);
-        const gy = H * 0.5 + Math.random() * (H * 0.5);
-        ctx.fillRect(gx, gy, 3, 2);
-      }
-
-      ctx.strokeStyle = '#5a5548';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(W * 0.65, H * 0.5);
-      ctx.lineTo(W * 0.65, H);
-      ctx.stroke();
-
-      drawFoxCatVan(180, H * 0.85);
-
-      // Hint text near the van
-      ctx.fillStyle = 'rgba(232,201,74,0.7)';
+      ctx.fillStyle = 'rgba(232,201,74,0.85)';
       ctx.font = '11px Courier New';
-      ctx.fillText('Click van for Map', 195, H * 0.85 + 25);
+      ctx.fillText('Click van for Map', vanX + 30, vanGroundY + 18);
 
-      drawShopDoor(20, H * 0.5 - 40, '#2a2a26');
-      ctx.fillStyle = '#2a2a26';
-      ctx.font = '12px Courier New';
-      ctx.fillText('◄ Stairwell', 5, H * 0.5 - 44);
-    }
-
-    function drawFoxCatVan(x, groundY) {
-      const bodyColor = '#e8e2d0';
-
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      ctx.ellipse(x + 80, groundY + 4, 95, 10, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = bodyColor;
-      ctx.fillRect(x, groundY - 60, 160, 50);
-
-      ctx.beginPath();
-      ctx.moveTo(x + 160, groundY - 60);
-      ctx.lineTo(x + 180, groundY - 40);
-      ctx.lineTo(x + 180, groundY - 10);
-      ctx.lineTo(x + 160, groundY - 10);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#cfe0e8';
-      ctx.beginPath();
-      ctx.moveTo(x + 163, groundY - 55);
-      ctx.lineTo(x + 176, groundY - 40);
-      ctx.lineTo(x + 176, groundY - 18);
-      ctx.lineTo(x + 163, groundY - 18);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#cfe0e8';
-      ctx.fillRect(x + 20, groundY - 55, 30, 18);
-      ctx.fillRect(x + 60, groundY - 55, 30, 18);
-
-      ctx.fillStyle = '#8a8a80';
-      ctx.fillRect(x, groundY - 10, 180, 6);
-
-      ctx.fillStyle = '#1a1a1a';
-      ctx.beginPath(); ctx.arc(x + 35, groundY, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 140, groundY, 13, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#9a9a92';
-      ctx.beginPath(); ctx.arc(x + 35, groundY, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x + 140, groundY, 5, 0, Math.PI * 2); ctx.fill();
-
-      drawFaceDecal(x + 45, groundY - 40, '#d9803a', 'fox');
-      drawFaceDecal(x + 110, groundY - 40, '#8a8a92', 'cat');
+      drawGaragePad(10, 340, 90, 100, '◄ L4');
+      drawGaragePad(500, 300, 120, 120, 'Stairs');
     }
 
     function drawFaceDecal(cx, cy, color, type) {
@@ -1084,307 +1908,1133 @@
       ctx.font = 'bold 20px Courier New';
       ctx.fillText('X', 537, 80);
 
-      // Placeholder locations
-      ctx.fillStyle = '#3a3a34';
-      ctx.fillRect(120, 130, 180, 100);
-      ctx.fillRect(340, 130, 180, 100);
-      ctx.fillRect(120, 260, 180, 100);
-      ctx.fillRect(340, 260, 180, 100);
+      // Location tiles
+      for (let i = 0; i < mapLocations.length; i++) {
+        const loc = mapLocations[i];
+        ctx.fillStyle = loc.color;
+        ctx.fillRect(loc.x, loc.y, loc.w, loc.h);
+        ctx.strokeStyle = loc.accent;
+        ctx.lineWidth = loc.locked ? 1 : 2;
+        ctx.strokeRect(loc.x, loc.y, loc.w, loc.h);
 
-      ctx.strokeStyle = '#6a6a60';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(120, 130, 180, 100);
-      ctx.strokeRect(340, 130, 180, 100);
-      ctx.strokeRect(120, 260, 180, 100);
-      ctx.strokeRect(340, 260, 180, 100);
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px Courier New';
-      ctx.fillText('City Street', 210, 185);
-      ctx.fillText('(Current Area)', 210, 205);
-
-      ctx.fillText('Garage District', 430, 185);
-      ctx.fillText('(Unlocked)', 430, 205);
-
-      ctx.fillText('???', 210, 315);
-      ctx.fillText('(Locked)', 210, 335);
-
-      ctx.fillText('???', 430, 315);
-      ctx.fillText('(Locked)', 430, 335);
+        ctx.fillStyle = loc.locked ? '#666' : '#eee';
+        ctx.font = 'bold 14px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(loc.name, loc.x + loc.w / 2, loc.y + 42);
+        ctx.fillStyle = loc.locked ? '#555' : loc.accent;
+        ctx.font = '12px Courier New';
+        ctx.fillText(loc.sub, loc.x + loc.w / 2, loc.y + 64);
+        if (!loc.locked) {
+          ctx.fillStyle = 'rgba(232,201,74,0.7)';
+          ctx.font = '11px Courier New';
+          ctx.fillText('click to travel', loc.x + loc.w / 2, loc.y + 84);
+        }
+      }
 
       ctx.fillStyle = '#888';
       ctx.font = '12px Courier New';
-      ctx.fillText('More locations coming soon...', 320, 400);
+      ctx.textAlign = 'center';
+      ctx.fillText('Tap a location to drive the Whiskers van there.', 320, 400);
+      ctx.textAlign = 'left';
+    }
+
+    // ===== FOREST + DREAMCORE =====
+    function drawForestExitPad() {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      drawShopDoor(35, 370, '#2a3a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Back', 32, 358);
+    }
+
+    function drawForestEntrance() {
+      const W = canvas.width, H = canvas.height;
+
+      // Sky through canopy
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#1a2a28');
+      sky.addColorStop(0.45, '#2a4a38');
+      sky.addColorStop(1, '#0e1a14');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+
+      // Soft fog
+      ctx.fillStyle = 'rgba(80,120,90,0.12)';
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.ellipse(80 + i * 100, 200 + (i % 3) * 40, 90, 30, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Ground path hub
+      ctx.fillStyle = '#3a3020';
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H * 0.72, 220, 70, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4a3a28';
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H * 0.72, 160, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Trees framing the crossroads
+      function tree(x, baseY, h) {
+        ctx.fillStyle = '#2a1a10';
+        ctx.fillRect(x - 8, baseY - h * 0.35, 16, h * 0.35);
+        ctx.fillStyle = '#1a3a28';
+        ctx.beginPath();
+        ctx.moveTo(x, baseY - h);
+        ctx.lineTo(x + h * 0.28, baseY - h * 0.35);
+        ctx.lineTo(x - h * 0.28, baseY - h * 0.35);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#245038';
+        ctx.beginPath();
+        ctx.moveTo(x, baseY - h * 0.85);
+        ctx.lineTo(x + h * 0.22, baseY - h * 0.4);
+        ctx.lineTo(x - h * 0.22, baseY - h * 0.4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      tree(50, H * 0.75, 220);
+      tree(110, H * 0.78, 180);
+      tree(590, H * 0.75, 230);
+      tree(530, H * 0.78, 190);
+      tree(200, H * 0.55, 160);
+      tree(440, H * 0.52, 170);
+
+      // Firefly dots
+      ctx.fillStyle = 'rgba(180,255,140,0.55)';
+      for (let i = 0; i < 18; i++) {
+        const fx = 40 + ((i * 97) % 560);
+        const fy = 40 + ((i * 53) % 280);
+        ctx.beginPath();
+        ctx.arc(fx, fy, 2 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 150, 12, 300, 36);
+      ctx.fillStyle = '#9dffc0';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Whispering Forest Crossroads', W / 2, 36);
+
+      // 5 path mouths (match door hitboxes)
+      const paths = [
+        { x: 40, y: 120, label: 'Moss Trail', color: '#3a6a48' },
+        { x: 160, y: 90, label: 'Firefly Creek', color: '#2a5a6a' },
+        { x: 280, y: 70, label: 'Ancient Grove', color: '#4a5a30' },
+        { x: 400, y: 90, label: 'Mushroom Hollow', color: '#5a4a6a' },
+        { x: 520, y: 120, label: 'Deep Thicket', color: '#1a3a28' }
+      ];
+      for (let i = 0; i < paths.length; i++) {
+        const p = paths[i];
+        // path corridor into trees
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.moveTo(p.x + 10, p.y + 80);
+        ctx.lineTo(p.x + 40, p.y);
+        ctx.lineTo(p.x + 60, p.y);
+        ctx.lineTo(p.x + 90, p.y + 80);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(125,255,176,0.75)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(p.x, p.y, 100, 80);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(p.x + 6, p.y + 8, 88, 28);
+        ctx.fillStyle = '#cfe';
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillText(p.label, p.x + 50, p.y + 22);
+        ctx.fillStyle = 'rgba(232,201,74,0.8)';
+        ctx.font = '10px Courier New';
+        ctx.fillText('enter →', p.x + 50, p.y + 42);
+      }
 
       ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Roof', 32, 358);
+    }
+
+    function drawForestPath(variant) {
+      const W = canvas.width, H = canvas.height;
+      const palettes = [
+        { sky0: '#1a3028', sky1: '#0a1810', ground: '#2a3a28', accent: '#6dff9a', name: 'Moss' },
+        { sky0: '#1a2838', sky1: '#0a1218', ground: '#243038', accent: '#80e0ff', name: 'Creek' },
+        { sky0: '#243018', sky1: '#101808', ground: '#3a3a20', accent: '#c8e060', name: 'Grove' },
+        { sky0: '#2a2038', sky1: '#120e18', ground: '#2a2430', accent: '#e0a0ff', name: 'Hollow' },
+        { sky0: '#0e1a14', sky1: '#060c08', ground: '#1a2418', accent: '#50a070', name: 'Thicket' }
+      ];
+      const p = palettes[variant] || palettes[0];
+
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, p.sky0);
+      sky.addColorStop(1, p.sky1);
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+
+      // Tree trunks
+      for (let i = 0; i < 8; i++) {
+        const tx = 30 + i * 80 + (i % 2) * 20;
+        ctx.fillStyle = '#1a1208';
+        ctx.fillRect(tx, 40, 18 + (i % 3) * 4, H * 0.7);
+        ctx.fillStyle = p.sky0;
+        ctx.beginPath();
+        ctx.arc(tx + 10, 80 + (i % 4) * 30, 40 + (i % 3) * 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Path
+      ctx.fillStyle = p.ground;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.25, H);
+      ctx.lineTo(W * 0.4, H * 0.55);
+      ctx.lineTo(W * 0.6, H * 0.55);
+      ctx.lineTo(W * 0.75, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Accents
+      ctx.fillStyle = p.accent;
+      ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 12; i++) {
+        ctx.beginPath();
+        ctx.arc(60 + i * 50, 100 + (i % 5) * 40, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 120, 16, 240, 32);
+      ctx.fillStyle = p.accent;
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(rooms[currentRoom].name, W / 2, 38);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    function drawDreamcore() {
+      const W = canvas.width, H = canvas.height;
+
+      // Surreal gradient sky
+      const sky = ctx.createLinearGradient(0, 0, W, H);
+      sky.addColorStop(0, '#1a1040');
+      sky.addColorStop(0.4, '#3a2060');
+      sky.addColorStop(0.7, '#e080c0');
+      sky.addColorStop(1, '#80c0e8');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+
+      // Checker floor fading into void
+      const tile = 40;
+      for (let y = Math.floor(H * 0.55); y < H; y += tile) {
+        for (let x = 0; x < W; x += tile) {
+          const fade = (y - H * 0.55) / (H * 0.45);
+          const on = ((x / tile) + (y / tile)) % 2 === 0;
+          ctx.fillStyle = on
+            ? 'rgba(255,255,255,' + (0.15 + fade * 0.25) + ')'
+            : 'rgba(40,20,60,' + (0.35 + fade * 0.4) + ')';
+          ctx.fillRect(x, y, tile, tile);
+        }
+      }
+
+      // Floating islands / blobs
+      ctx.fillStyle = 'rgba(200,160,255,0.35)';
+      ctx.beginPath(); ctx.ellipse(120, 140, 70, 28, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(500, 100, 90, 34, 0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,180,220,0.3)';
+      ctx.beginPath(); ctx.ellipse(320, 180, 100, 26, 0, 0, Math.PI * 2); ctx.fill();
+
+      // Giant moon / orb
+      const orb = ctx.createRadialGradient(480, 80, 10, 480, 80, 90);
+      orb.addColorStop(0, 'rgba(255,255,255,0.9)');
+      orb.addColorStop(0.4, 'rgba(200,180,255,0.5)');
+      orb.addColorStop(1, 'rgba(100,60,160,0)');
+      ctx.fillStyle = orb;
+      ctx.beginPath();
+      ctx.arc(480, 80, 90, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Doorways that go nowhere (dream vibe)
+      ctx.fillStyle = 'rgba(20,10,40,0.7)';
+      ctx.fillRect(80, 220, 50, 90);
+      ctx.fillRect(520, 200, 50, 100);
+      ctx.strokeStyle = 'rgba(200,160,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(80, 220, 50, 90);
+      ctx.strokeRect(520, 200, 50, 100);
+
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(W / 2 - 110, 14, 220, 34);
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Dreamcore Limbo', W / 2, 38);
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText('time feels soft here…', W / 2, 70);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#c9a0ff';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Roof', 32, 358);
     }
 
     // ===== ROOMS =====
     function drawRoom() {
-      ctx.fillStyle = '#3d2b1f'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#5c4033'; ctx.fillRect(0,0,canvas.width,250);
-      ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = 2;
-      for (let y=250; y<canvas.height; y+=24) {
-        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+      const W = canvas.width, H = canvas.height;
+      // Full bedroom concept art — The Arcane Den
+      const drawn = drawImageCover(bedroomArt, 0, 0, W, H, 0.5, 0.5);
+      if (!drawn) {
+        ctx.fillStyle = '#3d2b1f'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#5c4033'; ctx.fillRect(0, 0, W, 250);
+        drawDoor(545, 110, 80, 170);
       }
-      ctx.fillStyle = '#4a2c17'; ctx.fillRect(28,155,18,120);
-      ctx.fillStyle = '#6b3e26'; ctx.fillRect(40,195,165,70);
-      ctx.fillStyle = '#c45c26'; ctx.fillRect(55,200,140,55);
-      ctx.fillStyle = '#e8d5b7'; ctx.fillRect(58,205,48,22);
-      ctx.fillStyle = '#5c4033'; ctx.fillRect(400,150,120,130);
-      ctx.fillStyle = '#7a5c45'; ctx.fillRect(395,145,130,12);
-      drawDoor(545,110,80,170);
+
+      // Hallway exit pad on the right
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(540, 300, 90, 150);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(543, 303, 84, 144);
+      ctx.setLineDash([]);
+      drawShopDoor(555, 340, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('Hallway ►', 548, 330);
     }
 
     function drawHallway() {
-      ctx.fillStyle = '#2c241b'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#4a3b2f'; ctx.fillRect(0,0,canvas.width,250);
-      ctx.strokeStyle = '#1a140e'; ctx.lineWidth = 2;
-      for (let y=250; y<canvas.height; y+=22) {
-        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
+      const W = canvas.width, H = canvas.height;
+      // Passage of Stars concept art
+      const drawn = drawImageCover(hallwayArt, 0, 0, W, H, 0.5, 0.5);
+      if (!drawn) {
+        ctx.fillStyle = '#2c241b'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#4a3b2f'; ctx.fillRect(0, 0, W, 250);
+        drawDoor(15, 110, 75, 170);
+        drawDoor(550, 110, 75, 170);
+        drawDoor(270, 110, 100, 170);
       }
-      ctx.fillStyle = '#3a2e24';
-      ctx.fillRect(0,0,20,canvas.height); ctx.fillRect(620,0,20,canvas.height);
-      drawDoor(15,110,75,170); drawDoor(550,110,75,170); drawDoor(270,110,100,170);
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '12px Courier New';
-      ctx.fillText('Kitchen', 290, 100); ctx.fillText('City', 570, 100);
+
+      // Exit pads overlaid on the corridor
+      function pad(x, y, w, h, label) {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'rgba(125, 255, 176, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillText(label, x + 8, y + 18);
+      }
+      pad(10, 300, 95, 140, '◄ Den');
+      pad(260, 340, 120, 100, 'Kitchen');
+      pad(530, 280, 100, 160, 'City ►');
     }
 
     function drawKitchen() {
-      ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth = 1;
-      for (let x=0; x<canvas.width; x+=40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-      for (let y=0; y<canvas.height; y+=40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
-      ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0,0,canvas.width,220);
-      ctx.fillStyle = '#d0d0d0'; ctx.fillRect(40,200,560,50);
-      ctx.fillStyle = '#b0b0b0'; ctx.fillRect(40,245,560,18);
-      ctx.fillStyle = '#333'; ctx.fillRect(80,175,110,30);
-      ctx.fillStyle = '#222'; ctx.fillRect(90,160,40,20); ctx.fillRect(140,160,40,20);
-      ctx.fillStyle = '#111';
-      ctx.beginPath(); ctx.arc(110,170,12,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(160,170,12,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#aaa'; ctx.fillRect(280,185,90,25);
-      ctx.fillStyle = '#888'; ctx.fillRect(290,190,70,15);
-      ctx.fillStyle = '#666'; ctx.fillRect(320,170,10,20); ctx.fillRect(310,168,30,6);
-      ctx.fillStyle = '#ddd'; ctx.fillRect(420,80,80,90); ctx.fillRect(510,80,80,90);
-      drawDoor(270,380,100,70);
+      const W = canvas.width, H = canvas.height;
+      // Alchemical Pantry concept art
+      const drawn = drawImageCover(kitchenArt, 0, 0, W, H, 0.5, 0.52);
+      if (!drawn) {
+        ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0, 0, W, H);
+        drawDoor(270, 380, 100, 70);
+      }
+
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(260, 380, 120, 80);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(263, 383, 114, 74);
+      ctx.setLineDash([]);
+      drawShopDoor(295, 385, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Hallway', 278, 375);
     }
 
     function drawCity() {
-      const W = canvas.width, H = canvas.height, groundY = H * 0.55;
-      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
-      sky.addColorStop(0, '#6b7fb0'); sky.addColorStop(1, '#c9a8c2');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, groundY);
-      ctx.fillStyle = '#9a9a92'; ctx.fillRect(0, groundY, W, H*0.23);
-      ctx.strokeStyle = '#7d7d74'; ctx.lineWidth = 2;
-      for (let x=0; x<W; x+=60) { ctx.beginPath(); ctx.moveTo(x,groundY); ctx.lineTo(x,H*0.78); ctx.stroke(); }
-      ctx.fillStyle = '#3a3a42'; ctx.fillRect(0, H*0.78, W, H*0.22);
-      ctx.fillStyle = '#e8d97a';
-      for (let x=10; x<W; x+=50) ctx.fillRect(x, H*0.78+(H*0.22)/2-3, 30, 6);
-      drawWeaponStore(160, groundY, 130, H*0.38);
-      drawClothingStore(310, groundY, 140, H*0.34);
-      drawBarShop(470, groundY, 140, H*0.36);
-      drawDoor(55, 190, 70, 90);
-      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Hallway', 50, 180);
-      drawStreetSign(540, 140, 'GARAGE →');
+      const W = canvas.width, H = canvas.height;
+
+      // Arcane street art as full background (sky + wall + sidewalk + road)
+      // focusY ~0.5 keeps sidewalk band under the storefronts
+      const drawn = drawImageCover(streetRoadArt, 0, 0, W, H, 0.5, 0.5);
+      if (!drawn) {
+        const groundY = H * 0.55;
+        const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+        sky.addColorStop(0, '#6b7fb0'); sky.addColorStop(1, '#c9a8c2');
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, W, groundY);
+        ctx.fillStyle = '#9a9a92'; ctx.fillRect(0, groundY, W, H * 0.23);
+        ctx.fillStyle = '#3a3a42'; ctx.fillRect(0, H * 0.78, W, H * 0.22);
+      }
+
+      // Sidewalk top edge in the street art (~58% of frame when height-mapped)
+      // Shop bottoms sit ON that sidewalk so facades line up with the walkway
+      const sidewalkY = H * 0.58;
+      const shopH = H * 0.40;
+
+      // Soft shadow strip so shops feel planted on the pavement
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(20, sidewalkY - 4, 540, 10);
+
+      // Home house facade behind the ◄ Home door (left of shops)
+      const homeW = 110;
+      const homeH = shopH * 1.05;
+      const homeX = 15;
+      const homeY = sidewalkY - homeH;
+      const houseDrawn = drawImageCover(homeHouseArt, homeX, homeY, homeW, homeH, 0.5, 0.55);
+      if (!houseDrawn) {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(20, sidewalkY - 100, 80, 100);
+        drawShopDoor(35, sidewalkY - 75, '#2a2a26');
+      } else {
+        ctx.strokeStyle = 'rgba(80, 255, 140, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(homeX + 1, homeY + 1, homeW - 2, homeH - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(homeX + 6, homeY + 6, homeW - 12, 18);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('◄ HOME', homeX + homeW / 2, homeY + 19);
+        ctx.textAlign = 'left';
+      }
+
+      // Storefronts lined up along the sidewalk (after the house)
+      drawWeaponStore(140, sidewalkY, 150, shopH);
+      drawClothingStore(300, sidewalkY, 145, shopH * 0.95);
+      drawBarShop(455, sidewalkY, 90, shopH * 0.95);
+
+      // Garage exit sits on the right sidewalk / road edge
+      drawTravelMarker(555, sidewalkY - 100, 85, 115, 'GARAGE →', 'bike');
+    }
+
+    // Soft green exit pad helper for garage floors
+    function drawGaragePad(x, y, w, h, label) {
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText(label, x + 8, y + 18);
     }
 
     function drawGarageStreet() {
-      const W = canvas.width, H = canvas.height, groundY = H * 0.55;
-      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
-      sky.addColorStop(0, '#5a6b8a'); sky.addColorStop(1, '#a89aa0');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, groundY);
-      ctx.fillStyle = '#8f8f88'; ctx.fillRect(0, groundY, W, H*0.23);
-      ctx.strokeStyle = '#727268'; ctx.lineWidth = 2;
-      for (let x=0; x<W; x+=60) {
-        ctx.beginPath(); ctx.moveTo(x, groundY); ctx.lineTo(x, H*0.78); ctx.stroke();
+      const W = canvas.width, H = canvas.height;
+      // Arcane approach road — full background
+      const drawn = drawImageCover(garageStreetArt, 0, 0, W, H, 0.55, 0.55);
+      if (!drawn) {
+        const groundY = H * 0.55;
+        ctx.fillStyle = '#5a6b8a'; ctx.fillRect(0, 0, W, groundY);
+        ctx.fillStyle = '#8f8f88'; ctx.fillRect(0, groundY, W, H * 0.45);
+        drawParkingGarage(380, groundY, 240, H * 0.40);
       }
-      ctx.fillStyle = '#3a3a42'; ctx.fillRect(0, H*0.78, W, H*0.22);
-      ctx.fillStyle = '#d9cb6a';
-      for (let x=10; x<W; x+=50) ctx.fillRect(x, H*0.78+(H*0.22)/2-3, 30, 6);
-      drawBrokenBuilding(20, groundY, 140, H*0.30);
-      drawBrokenBuilding(180, groundY, 120, H*0.24);
-      drawParkingGarage(380, groundY, 240, H*0.40);
-      drawStreetSign(8, 155, '← CITY');
+
+      // Exit pads on top of the art
+      drawTravelMarker(10, 300, 100, 130, '← CITY', 'bench');
+      drawGaragePad(380, 180, 200, 180, 'Garage ►');
+
+      // Clickable door on abandoned building (left)
+      const abX = 90, abY = 150, abW = 100, abH = 140;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(abX, abY, abW, abH);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(abX + 3, abY + 3, abW - 6, abH - 6);
+      ctx.setLineDash([]);
+      // dark boarded door
+      ctx.fillStyle = '#2a2218';
+      ctx.fillRect(abX + 22, abY + 40, 56, 90);
+      ctx.strokeStyle = '#5a4a38';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(abX + 22, abY + 40, 56, 90);
+      ctx.fillStyle = '#8a7a60';
+      ctx.fillRect(abX + 28, abY + 50, 44, 6);
+      ctx.fillRect(abX + 28, abY + 70, 44, 6);
+      ctx.fillRect(abX + 28, abY + 90, 44, 6);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Warehouse', abX + abW / 2, abY + 22);
+      ctx.textAlign = 'left';
+    }
+
+    function drawWarehouseBase(battleMode) {
+      const W = canvas.width, H = canvas.height;
+
+      // Dim industrial interior
+      const wall = ctx.createLinearGradient(0, 0, 0, H * 0.7);
+      wall.addColorStop(0, '#3a3834');
+      wall.addColorStop(1, '#2a2824');
+      ctx.fillStyle = wall;
+      ctx.fillRect(0, 0, W, H * 0.72);
+
+      // Corrugated wall lines
+      ctx.strokeStyle = 'rgba(20,20,18,0.35)';
+      ctx.lineWidth = 2;
+      for (let x = 20; x < W; x += 28) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H * 0.72);
+        ctx.stroke();
+      }
+
+      // High windows
+      for (let i = 0; i < 4; i++) {
+        const wx = 60 + i * 140;
+        ctx.fillStyle = battleMode ? 'rgba(180, 60, 40, 0.25)' : 'rgba(120, 140, 100, 0.2)';
+        ctx.fillRect(wx, 30, 70, 40);
+        ctx.strokeStyle = '#1a1a16';
+        ctx.strokeRect(wx, 30, 70, 40);
+        ctx.beginPath();
+        ctx.moveTo(wx + 35, 30);
+        ctx.lineTo(wx + 35, 70);
+        ctx.moveTo(wx, 50);
+        ctx.lineTo(wx + 70, 50);
+        ctx.stroke();
+      }
+
+      // Floor
+      ctx.fillStyle = '#4a4840';
+      ctx.fillRect(0, H * 0.72, W, H * 0.28);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      for (let y = H * 0.72; y < H; y += 22) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+
+      // Support pillars
+      ctx.fillStyle = '#5a5548';
+      ctx.fillRect(160, 80, 22, H * 0.72 - 80);
+      ctx.fillRect(460, 80, 22, H * 0.72 - 80);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(160, 80, 6, H * 0.72 - 80);
+      ctx.fillRect(460, 80, 6, H * 0.72 - 80);
+
+      // Crates along left wall
+      ctx.fillStyle = '#6b5340';
+      ctx.fillRect(40, H * 0.55, 50, 50);
+      ctx.fillRect(55, H * 0.48, 45, 40);
+      ctx.fillStyle = '#5a4434';
+      ctx.fillRect(40, H * 0.55, 50, 8);
+      ctx.fillRect(55, H * 0.48, 45, 8);
+
+      // Attack dummies at the far end (right)
+      drawTrainingDummy(400, H * 0.72);
+      drawTrainingDummy(500, H * 0.72);
+      drawTrainingDummy(550, H * 0.68);
+
+      // Exit
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      drawShopDoor(35, 370, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Street', 28, 358);
+    }
+
+    function drawTrainingDummy(cx, groundY) {
+      // post
+      ctx.fillStyle = '#5a4030';
+      ctx.fillRect(cx - 6, groundY - 90, 12, 90);
+      // torso bag
+      ctx.fillStyle = '#8a6a4a';
+      ctx.beginPath();
+      ctx.ellipse(cx, groundY - 100, 22, 36, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#6a4a30';
+      ctx.beginPath();
+      ctx.ellipse(cx, groundY - 100, 14, 28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // head
+      ctx.fillStyle = '#c4a070';
+      ctx.beginPath();
+      ctx.arc(cx, groundY - 145, 16, 0, Math.PI * 2);
+      ctx.fill();
+      // X face
+      ctx.strokeStyle = '#3a2a1a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, groundY - 150);
+      ctx.lineTo(cx + 6, groundY - 140);
+      ctx.moveTo(cx + 6, groundY - 150);
+      ctx.lineTo(cx - 6, groundY - 140);
+      ctx.stroke();
+      // arms / crossbar
+      ctx.strokeStyle = '#5a4030';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(cx - 30, groundY - 110);
+      ctx.lineTo(cx + 30, groundY - 110);
+      ctx.stroke();
+      // base
+      ctx.fillStyle = '#3a3028';
+      ctx.fillRect(cx - 22, groundY - 8, 44, 10);
+    }
+
+    function drawWarehouse() {
+      drawWarehouseBase(false);
+
+      // Clickable training box at the end by the dummies
+      const b = trainingBoxHitbox;
+      ctx.fillStyle = '#6b4a28';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = '#8a6238';
+      ctx.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
+      ctx.strokeStyle = 'rgba(232, 201, 74, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      ctx.setLineDash([]);
+      // rope / lid lines
+      ctx.strokeStyle = '#3a2a18';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(b.x + 10, b.y + 30);
+      ctx.lineTo(b.x + b.w - 10, b.y + 30);
+      ctx.moveTo(b.x + 10, b.y + 55);
+      ctx.lineTo(b.x + b.w - 10, b.y + 55);
+      ctx.stroke();
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('TRAINING', b.x + b.w / 2, b.y + 22);
+      ctx.font = '11px Courier New';
+      ctx.fillText('click box', b.x + b.w / 2, b.y + b.h - 12);
+      ctx.textAlign = 'left';
+    }
+
+    function drawWarehouseBattle() {
+      drawWarehouseBase(true);
+
+      // Focus dummy (slightly larger, center)
+      drawTrainingDummy(480, canvas.height * 0.72);
+      // HP bar over dummy
+      const barX = 420, barY = 160, barW = 120, barH = 14;
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(barX, barY, barW, barH);
+      const pct = combat.dummyMaxHp > 0 ? combat.dummyHp / combat.dummyMaxHp : 0;
+      ctx.fillStyle = pct > 0.35 ? '#c44' : '#f33';
+      ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#eee';
+      ctx.font = '11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Dummy ' + combat.dummyHp + '/' + combat.dummyMaxHp, barX + barW / 2, barY - 6);
+      ctx.textAlign = 'left';
+
+      // Combat menu bar
+      drawCombatMenu();
+    }
+
+    function drawCombatMenu() {
+      // Bottom panel
+      ctx.fillStyle = 'rgba(10, 10, 14, 0.88)';
+      ctx.fillRect(0, 370, canvas.width, 110);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 370);
+      ctx.lineTo(canvas.width, 370);
+      ctx.stroke();
+
+      const turnName = combat.turn === 'ani' ? 'ANI' : 'NEKO';
+      const turnColor = combat.turn === 'ani' ? '#ff9a4a' : '#c9a0ff';
+
+      ctx.fillStyle = turnColor;
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillText(turnName + "'S TURN", 20, 392);
+
+      ctx.fillStyle = '#ccc';
+      ctx.font = '12px Courier New';
+      // wrap log roughly
+      ctx.fillText(combat.log.slice(0, 70), 20, 412);
+      if (combat.log.length > 70) ctx.fillText(combat.log.slice(70, 140), 20, 428);
+
+      if (combat.won) {
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText('Training complete! Leave via ◄ Street.', 160, 440);
+        return;
+      }
+
+      if (combat.anim) {
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 14px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('…animating…', 320, 430);
+        ctx.textAlign = 'left';
+        return;
+      }
+
+      // Attack
+      ctx.fillStyle = '#5a2a2a';
+      ctx.fillRect(160, 400, 140, 50);
+      ctx.strokeStyle = '#e88';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(160, 400, 140, 50);
+      ctx.fillStyle = '#faa';
+      ctx.font = 'bold 18px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('ATTACK', 230, 432);
+
+      // Defend
+      ctx.fillStyle = '#2a3a5a';
+      ctx.fillRect(340, 400, 140, 50);
+      ctx.strokeStyle = '#8af';
+      ctx.strokeRect(340, 400, 140, 50);
+      ctx.fillStyle = '#acf';
+      ctx.fillText('DEFEND', 410, 432);
+      ctx.textAlign = 'left';
+
+      ctx.fillStyle = '#888';
+      ctx.font = '11px Courier New';
+      ctx.fillText('(Turns: Ani ↔ Neko)', 500, 392);
     }
 
     function drawParkingGarageInterior() {
       const W = canvas.width;
       const H = canvas.height;
 
-      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
-      wallGrad.addColorStop(0, '#6a6a62');
-      wallGrad.addColorStop(1, '#54544c');
-      ctx.fillStyle = wallGrad;
-      ctx.fillRect(0, 0, W, H * 0.75);
-
-      ctx.fillStyle = 'rgba(30,35,25,0.2)';
-      for (let i = 0; i < 6; i++) {
-        const sx = 20 + i * (W / 6) + Math.sin(i) * 10;
-        ctx.beginPath();
-        ctx.moveTo(sx, 0);
-        ctx.lineTo(sx + 4, H * (0.3 + (i % 3) * 0.15));
-        ctx.lineTo(sx - 4, H * (0.3 + (i % 3) * 0.15));
-        ctx.closePath();
-        ctx.fill();
+      // Level 1 art (stairs + ramp already in the image) — cars draw ON TOP
+      const drawn = drawImageCover(garageFloor1Art, 0, 0, W, H, 0.55, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#54544c';
+        ctx.fillRect(0, 0, W, H);
+        drawCarRamp(140, H * 0.75);
+        drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
       }
 
-      ctx.fillStyle = '#3f3f38';
-      for (let x = 40; x < W; x += 160) {
-        ctx.fillRect(x, 0, 24, H * 0.12);
-      }
+      // Red Flare parked in a stall (in front of background art)
+      drawCarSprite(40, H * 0.90, 0, 0.46);
 
-      drawGaragePillar(180, H * 0.12, H * 0.63);
-      drawGaragePillar(480, H * 0.12, H * 0.63);
-
-      ctx.fillStyle = '#7a7a70';
-      ctx.fillRect(0, H * 0.75, W, H * 0.25);
-
-      ctx.fillStyle = 'rgba(40,45,35,0.3)';
-      drawPuddle(120, H * 0.88, 40, 12);
-      drawPuddle(520, H * 0.92, 30, 9);
-      drawPuddle(340, H * 0.8, 22, 7);
-
-      ctx.strokeStyle = 'rgba(232,201,74,0.35)';
-      ctx.lineWidth = 3;
-      for (let x = 30; x < W; x += 130) {
-        ctx.beginPath();
-        ctx.moveTo(x, H * 0.78);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-      }
-
-      // Red Flare car from sheet, bigger scale
-      drawCarSprite(280, H * 0.88, 0, 0.36);
-      drawCarRamp(140, H * 0.75);
-      drawStairwell(W - 180, H * 0.75, 150, H * 0.55);
-
-      drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 5, H * 0.75 - 78);
+      // Clickable pads (art already has stairs/ramp visuals)
+      drawGaragePad(10, 340, 90, 100, '◄ Street');
+      drawGaragePad(280, 160, 160, 200, 'Ramp ▲ L2');
+      drawGaragePad(480, 200, 140, 200, 'Stairs ►');
     }
 
     function drawParkingGarageLevel2() {
       const W = canvas.width;
       const H = canvas.height;
 
-      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
-      wallGrad.addColorStop(0, '#68685f');
-      wallGrad.addColorStop(1, '#52524a');
-      ctx.fillStyle = wallGrad;
-      ctx.fillRect(0, 0, W, H * 0.75);
-
-      ctx.fillStyle = 'rgba(30,35,25,0.12)';
-      for (let i = 0; i < 4; i++) {
-        const sx = 60 + i * (W / 4);
-        ctx.fillRect(sx, 0, 4, H * 0.25);
+      // Level 2 art (ramp only) — car draws ON TOP
+      const drawn = drawImageCover(garageFloor2Art, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#52524a';
+        ctx.fillRect(0, 0, W, H);
+        drawBigRampUp(W - 260, H * 0.3, 240, H * 0.65);
       }
 
-      ctx.fillStyle = '#3f3f38';
-      for (let x = 40; x < W; x += 160) {
-        ctx.fillRect(x, 0, 24, H * 0.12);
-      }
+      // Black Shadow parked left of the ramp
+      drawCarSprite(30, H * 0.90, 1, 0.46);
 
-      drawBigPillar(W * 0.42, H * 0.1, H * 0.65);
-
-      ctx.fillStyle = '#78786e';
-      ctx.fillRect(0, H * 0.75, W, H * 0.25);
-
-      ctx.strokeStyle = 'rgba(232,201,74,0.3)';
-      ctx.lineWidth = 3;
-      for (let x = 30; x < W; x += 130) {
-        ctx.beginPath();
-        ctx.moveTo(x, H * 0.78);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-      }
-
-      ctx.fillStyle = 'rgba(40,45,35,0.15)';
-      drawPuddle(550, H * 0.9, 26, 8);
-
-      // Black Shadow car from sheet
-      drawCarSprite(60, H * 0.88, 1, 0.34);
-      drawBigRampUp(W - 260, H * 0.3, 240, H * 0.65);
-
-      drawShopDoor(20, H * 0.75 - 70, '#2a2a26');
-      ctx.fillStyle = '#e8c94a';
-      ctx.font = '12px Courier New';
-      ctx.fillText('◄ Down', 5, H * 0.75 - 78);
+      drawGaragePad(10, 340, 90, 100, '◄ Down');
+      drawGaragePad(250, 120, 200, 240, 'Ramp ▲ L3');
     }
 
     function drawParkingGarageLevel3() {
-      const W = canvas.width, H = canvas.height;
-      const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.75);
-      wallGrad.addColorStop(0, '#5a5a52');
-      wallGrad.addColorStop(1, '#484840');
-      ctx.fillStyle = wallGrad;
-      ctx.fillRect(0, 0, W, H * 0.75);
-      ctx.fillStyle = '#6a6a62';
-      ctx.fillRect(0, H * 0.75, W, H * 0.25);
-      ctx.fillStyle = '#e8c94a'; ctx.font = '16px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText('Parking Garage — Level 3', W / 2, 50);
-      ctx.font = '12px Courier New'; ctx.fillStyle = '#aaa';
-      ctx.fillText('(Coming soon)', W / 2, 80);
-      ctx.textAlign = 'left';
-      drawShopDoor(50, 300, '#2a2a26');
-      ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Level 2', 40, 290);
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Level 3 art (ramp) — full background
+      const drawn = drawImageCover(garageFloor3Art, 0, 0, W, H, 0.55, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#54544c';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      drawGaragePad(10, 340, 90, 100, '◄ Down');
+      drawGaragePad(250, 120, 200, 240, 'Ramp ▲ L4');
+    }
+
+    function drawParkingGarageLevel4() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Level 4 art (archway) — full background
+      const drawn = drawImageCover(garageFloor4Art, 0, 0, W, H, 0.55, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#4a4a42';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      drawGaragePad(10, 340, 90, 100, '◄ Down');
+      drawGaragePad(250, 140, 200, 220, 'Arch ▲ Roof');
     }
 
     function drawWeaponStoreInterior() {
       const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#6b5a4a'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#8a6a4a'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#6a4a30'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      // Full-room interior concept art
+      const drawn = drawImageCover(weaponInt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#6b5a4a'; ctx.fillRect(0, 0, W, H * 0.75);
+        ctx.fillStyle = '#8a6a4a'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
+        drawShelfWithSwords(60, H * 0.12, 200, H * 0.3);
+        drawShelfWithSwords(320, H * 0.12, 200, H * 0.3);
+        drawCounter(W - 260, H * 0.55, 200, 90, '#5a3b28');
       }
-      drawShelfWithSwords(60, H*0.12, 200, H*0.3);
-      drawShelfWithSwords(320, H*0.12, 200, H*0.3);
-      drawCounter(W-260, H*0.55, 200, 90, '#5a3b28');
-      drawBook(W-200, H*0.55-14);
-      drawShopDoor(55, 220, '#3a2a20');
-      ctx.fillStyle = '#f2d98b'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 40, 210);
+
+      // Weapons merchant (clickable) — same scale as Ani
+      drawWeaponMerchant();
+
+      // Exit pad bottom-left (fills the street door hitbox)
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      drawShopDoor(35, 370, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Street', 28, 358);
+    }
+
+    // Draw merchant at roughly Ani's on-screen size
+    function drawWeaponMerchant() {
+      const feetX = weaponNpcPos.feetX;
+      const feetY = weaponNpcPos.feetY;
+      // Match fox girl's drawn height
+      const aniDrawH = frameH * ani.scale;
+
+      if (!weaponPersonArt.complete || !weaponPersonArt.naturalWidth) {
+        const fw = 50, fh = aniDrawH;
+        weaponNpcHitbox.x = feetX - fw / 2;
+        weaponNpcHitbox.y = feetY - fh;
+        weaponNpcHitbox.w = fw;
+        weaponNpcHitbox.h = fh;
+        ctx.fillStyle = 'rgba(40,30,25,0.8)';
+        ctx.fillRect(weaponNpcHitbox.x, weaponNpcHitbox.y, fw, fh);
+        return;
+      }
+
+      const iw = weaponPersonArt.naturalWidth;
+      const ih = weaponPersonArt.naturalHeight;
+      const scale = aniDrawH / ih;
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.drawImage(weaponPersonArt, dx, dy, dw, dh);
+
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      const label = 'Shopkeep';
+      ctx.font = 'bold 11px Courier New';
+      const tw = ctx.measureText(label).width;
+      ctx.fillRect(feetX - tw / 2 - 6, dy - 22, tw + 12, 18);
+      ctx.fillStyle = '#7dffb0';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, feetX, dy - 9);
+      ctx.textAlign = 'left';
+
+      weaponNpcHitbox.x = dx;
+      weaponNpcHitbox.y = dy;
+      weaponNpcHitbox.w = dw;
+      weaponNpcHitbox.h = dh;
+    }
+
+    function drawShopItemThumb(img, x, y, w, h) {
+      ctx.fillStyle = '#0a0a0e';
+      ctx.fillRect(x, y, w, h);
+      if (img && img.complete && img.naturalWidth > 0) {
+        const sc = Math.min((w - 8) / img.naturalWidth, (h - 8) / img.naturalHeight);
+        const sw = img.naturalWidth * sc, sh = img.naturalHeight * sc;
+        ctx.drawImage(img, x + (w - sw) / 2, y + (h - sh) / 2, sw, sh);
+      }
+    }
+
+    function drawWeaponShopMenu() {
+      // Dim overlay
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Taller panel for two items
+      const px = 70, py = 60, pw = 500, ph = 320;
+      ctx.fillStyle = '#1e1e24';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(px, py, pw, ph);
+
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 20px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('ARCANE ARMORY — SHOP', 320, 95);
+
+      const items = [
+        { id: 'fox_sword', name: 'Fox Blade', price: 20, art: swordFoxArt },
+        { id: 'neko_claws', name: 'Neko Claws', price: 20, art: nekoClawsArt }
+      ];
+
+      for (let i = 0; i < items.length; i++) {
+        const rowY = 120 + i * 85;
+        const selected = shopSelected === i;
+        ctx.fillStyle = selected ? '#2a3a32' : '#2a2a32';
+        ctx.fillRect(95, rowY, 450, 75);
+        ctx.strokeStyle = selected ? '#7dffb0' : '#4a4a55';
+        ctx.lineWidth = selected ? 2 : 1;
+        ctx.strokeRect(95, rowY, 450, 75);
+
+        drawShopItemThumb(items[i].art, 105, rowY + 8, 100, 60);
+
+        ctx.fillStyle = '#eee';
+        ctx.font = 'bold 16px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText(items[i].name, 220, rowY + 30);
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText(items[i].price + ' gold', 220, rowY + 55);
+
+        if (inventory.indexOf(items[i].id) >= 0) {
+          ctx.fillStyle = '#7dffb0';
+          ctx.font = '12px Courier New';
+          ctx.fillText('(owned)', 340, rowY + 55);
+        }
+      }
+
+      // Buy button
+      ctx.fillStyle = '#2a5a3a';
+      ctx.fillRect(360, 310, 80, 40);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(360, 310, 80, 40);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('BUY', 400, 336);
+
+      // Cancel button
+      ctx.fillStyle = '#5a2a2a';
+      ctx.fillRect(460, 310, 90, 40);
+      ctx.strokeStyle = '#e88';
+      ctx.strokeRect(460, 310, 90, 40);
+      ctx.fillStyle = '#faa';
+      ctx.fillText('CANCEL', 505, 336);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('Your gold: ' + playerGold, 100, 335);
+
+      if (shopToast && shopToastTimer > 0) {
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 13px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(shopToast, 320, 365);
+      }
+      ctx.textAlign = 'left';
+    }
+
+    function drawClothingShopMenu() {
+      // Empty shop menu (placeholder for outfits later)
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const px = 70, py = 80, pw = 500, ph = 280;
+      ctx.fillStyle = '#1e1e24';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#e8a0d0';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(px, py, pw, ph);
+
+      ctx.fillStyle = '#e8a0d0';
+      ctx.font = 'bold 20px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('ARCANE ATTIRE — SHOP', 320, 120);
+
+      ctx.fillStyle = '#2a2a32';
+      ctx.fillRect(110, 150, 420, 120);
+      ctx.strokeStyle = '#5a4a55';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(110, 150, 420, 120);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '15px Courier New';
+      ctx.fillText('No outfits in stock yet.', 320, 200);
+      ctx.font = '13px Courier New';
+      ctx.fillStyle = '#888';
+      ctx.fillText('Check back after the next delivery.', 320, 230);
+
+      // Close button
+      ctx.fillStyle = '#5a2a2a';
+      ctx.fillRect(460, 300, 90, 40);
+      ctx.strokeStyle = '#e88';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(460, 300, 90, 40);
+      ctx.fillStyle = '#faa';
+      ctx.font = 'bold 16px Courier New';
+      ctx.fillText('CLOSE', 505, 326);
+      ctx.textAlign = 'left';
+    }
+
+    function drawGoldHud() {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(canvas.width - 120, 8, 110, 28);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(canvas.width - 120, 8, 110, 28);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'right';
+      ctx.fillText(playerGold + ' gold', canvas.width - 18, 27);
+      ctx.textAlign = 'left';
+
+      let hudY = 40;
+      const owned = [];
+      if (inventory.indexOf('fox_sword') >= 0) owned.push('Fox Blade');
+      if (inventory.indexOf('neko_claws') >= 0) owned.push('Neko Claws');
+      for (let i = 0; i < owned.length; i++) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(canvas.width - 120, hudY, 110, 20);
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = '11px Courier New';
+        ctx.textAlign = 'right';
+        ctx.fillText(owned[i], canvas.width - 18, hudY + 14);
+        ctx.textAlign = 'left';
+        hudY += 22;
+      }
+    }
+
+    function drawClothingMerchant() {
+      const feetX = clothingNpcPos.feetX;
+      const feetY = clothingNpcPos.feetY;
+      const aniDrawH = frameH * ani.scale;
+
+      if (!clothingPersonArt.complete || !clothingPersonArt.naturalWidth) {
+        clothingNpcHitbox.x = feetX - 40;
+        clothingNpcHitbox.y = feetY - aniDrawH;
+        clothingNpcHitbox.w = 80;
+        clothingNpcHitbox.h = aniDrawH;
+        ctx.fillStyle = 'rgba(80,40,70,0.8)';
+        ctx.fillRect(clothingNpcHitbox.x, clothingNpcHitbox.y, 80, aniDrawH);
+        return;
+      }
+
+      const iw = clothingPersonArt.naturalWidth;
+      const ih = clothingPersonArt.naturalHeight;
+      const scale = aniDrawH / ih;
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.drawImage(clothingPersonArt, dx, dy, dw, dh);
+
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.font = 'bold 11px Courier New';
+      const label = 'Shopkeep';
+      const tw = ctx.measureText(label).width;
+      ctx.fillRect(feetX - tw / 2 - 6, dy - 22, tw + 12, 18);
+      ctx.fillStyle = '#e8a0d0';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, feetX, dy - 9);
+      ctx.textAlign = 'left';
+
+      clothingNpcHitbox.x = dx;
+      clothingNpcHitbox.y = dy;
+      clothingNpcHitbox.w = dw;
+      clothingNpcHitbox.h = dh;
     }
 
     function drawClothingStoreInterior() {
       const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#c48fae'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#e8d9c9'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#c9b89a'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      // Full-room clothing / attire concept art
+      const drawn = drawImageCover(clothingInt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        ctx.fillStyle = '#c48fae'; ctx.fillRect(0, 0, W, H * 0.75);
+        ctx.fillStyle = '#e8d9c9'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
+        drawClothingRack(60, H * 0.2, 220);
+        drawClothingRack(340, H * 0.2, 220);
+        drawCounter(W - 260, H * 0.55, 200, 90, '#7a4a5a');
       }
-      drawClothingRack(60, H*0.2, 220);
-      drawClothingRack(340, H*0.2, 220);
-      drawCounter(W-260, H*0.55, 200, 90, '#7a4a5a');
-      drawBook(W-200, H*0.55-14);
-      drawShopDoor(55, 220, '#7a4a5a');
-      ctx.fillStyle = '#3d2818'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 40, 210);
+
+      drawClothingMerchant();
+
+      // Exit pad bottom-left
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      drawShopDoor(35, 370, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Street', 28, 358);
     }
 
     function drawBarInterior() {
       const W = canvas.width, H = canvas.height;
-      ctx.fillStyle = '#3a2a20'; ctx.fillRect(0, 0, W, H*0.75);
-      ctx.fillStyle = '#4a3a2a'; ctx.fillRect(0, H*0.75, W, H*0.25);
-      ctx.strokeStyle = '#2a1f18'; ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, H*0.75); ctx.lineTo(x, H); ctx.stroke();
+      // Full-room tavern concept art — The Eldritch Tap
+      const drawn = drawImageCover(barInt, 0, 0, W, H, 0.55, 0.5);
+      if (!drawn) {
+        ctx.fillStyle = '#3a2a20'; ctx.fillRect(0, 0, W, H * 0.75);
+        ctx.fillStyle = '#4a3a2a'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
+        drawCounter(W - 260, H * 0.5, 200, 100, '#2a1f18');
+        drawBottleShelf(W - 250, H * 0.18, 180);
       }
-      drawCounter(W-260, H*0.5, 200, 100, '#2a1f18');
-      drawBottleShelf(W-250, H*0.18, 180);
-      drawBottle(W-240, H*0.5+4, '#8a3a3a');
-      drawBottle(W-224, H*0.5+4, '#3a5a8a');
-      drawBottle(W-208, H*0.5+4, '#5a8a4a');
-      drawTableAndChairs(130, H*0.68);
-      drawTableAndChairs(320, H*0.7);
-      drawShopDoor(35, 220, '#2a1f18');
-      ctx.fillStyle = '#e8c94a'; ctx.font = '12px Courier New';
-      ctx.fillText('◄ Street', 20, 210);
+
+      // Exit pad bottom-left
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125, 255, 176, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      drawShopDoor(35, 370, '#2a2a26');
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Street', 28, 358);
     }
 
     function draw() {
@@ -1393,62 +3043,85 @@
       else if (currentRoom === 'kitchen') drawKitchen();
       else if (currentRoom === 'outside') drawCity();
       else if (currentRoom === 'garageStreet') drawGarageStreet();
+      else if (currentRoom === 'warehouse') drawWarehouse();
+      else if (currentRoom === 'warehouseBattle') drawWarehouseBattle();
       else if (currentRoom === 'parkingGarage') drawParkingGarageInterior();
       else if (currentRoom === 'stairwell') drawStairwellInterior();
       else if (currentRoom === 'parkingGarageLevel2') drawParkingGarageLevel2();
       else if (currentRoom === 'parkingGarageLevel3') drawParkingGarageLevel3();
+      else if (currentRoom === 'parkingGarageLevel4') drawParkingGarageLevel4();
       else if (currentRoom === 'garageTopFloor') drawGarageTopFloor();
-      else if (currentRoom === 'clearing') drawClearing();
+      else if (currentRoom === 'forestEntrance') drawForestEntrance();
+      else if (currentRoom === 'forestPath1') drawForestPath(0);
+      else if (currentRoom === 'forestPath2') drawForestPath(1);
+      else if (currentRoom === 'forestPath3') drawForestPath(2);
+      else if (currentRoom === 'forestPath4') drawForestPath(3);
+      else if (currentRoom === 'forestPath5') drawForestPath(4);
+      else if (currentRoom === 'dreamcore') drawDreamcore();
       else if (currentRoom === 'weaponStore') drawWeaponStoreInterior();
       else if (currentRoom === 'clothingStore') drawClothingStoreInterior();
       else if (currentRoom === 'bar') drawBarInterior();
 
-      // Draw Ani
-      const drawW = frameW * ani.scale, drawH = frameH * ani.scale;
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.beginPath();
-      ctx.ellipse(ani.x + drawW/2, ani.y + drawH - 6, drawW*0.30, 10, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      if (sheet.complete && sheet.naturalWidth > 0) {
-        const clean = getCleanFrame(ani.frame);
-        ctx.save();
-        if (ani.facing === -1) {
-          ctx.translate(ani.x + drawW, ani.y); ctx.scale(-1, 1);
-          ctx.drawImage(clean, 0, 0, frameW, frameH, 0, 0, drawW, drawH);
-        } else {
-          ctx.drawImage(clean, 0, 0, frameW, frameH, ani.x, ani.y, drawW, drawH);
-        }
-        ctx.restore();
-      }
-
-      // Draw Neko
-      if (nekoSheet.complete && nekoSheet.naturalWidth > 0) {
-        const nw = nekoFrameW * neko.scale;
-        const nh = nekoFrameH * neko.scale;
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      // Draw fighters — combat sheets in warehouse battle, walk sheets elsewhere
+      if (currentRoom === 'warehouseBattle' && combat.active) {
+        // Pin feet just above the combat speech bar (panel starts at y=370)
+        const combatFeetY = 368;
+        drawCombatFighter('ani', 200, combatFeetY);
+        drawCombatFighter('neko', 95, combatFeetY);
+      } else {
+        // Draw Ani
+        const drawW = frameW * ani.scale, drawH = frameH * ani.scale;
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
         ctx.beginPath();
-        ctx.ellipse(neko.x + nw/2, neko.y + nh - 4, nw*0.28, 8, 0, 0, Math.PI*2);
+        ctx.ellipse(ani.x + drawW / 2, ani.y + drawH - 6, drawW * 0.30, 10, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const cleanNeko = getCleanNekoFrame(neko.frame);
-        ctx.save();
-        if (neko.facing === -1) {
-          ctx.translate(neko.x + nw, neko.y); ctx.scale(-1, 1);
-          ctx.drawImage(cleanNeko, 0, 0, nekoFrameW, nekoFrameH, 0, 0, nw, nh);
+        const clean = getCleanFrame(ani.frame);
+        if (clean) {
+          ctx.save();
+          if (ani.facing === -1) {
+            ctx.translate(ani.x + drawW, ani.y); ctx.scale(-1, 1);
+            ctx.drawImage(clean, 0, 0, frameW, frameH, 0, 0, drawW, drawH);
+          } else {
+            ctx.drawImage(clean, 0, 0, frameW, frameH, ani.x, ani.y, drawW, drawH);
+          }
+          ctx.restore();
         } else {
-          ctx.drawImage(cleanNeko, 0, 0, nekoFrameW, nekoFrameH, neko.x, neko.y, nw, nh);
+          ctx.fillStyle = '#ff8800';
+          ctx.fillRect(ani.x + drawW * 0.3, ani.y + drawH * 0.2, drawW * 0.4, drawH * 0.7);
+          ctx.beginPath();
+          ctx.arc(ani.x + drawW * 0.5, ani.y + drawH * 0.18, drawW * 0.18, 0, Math.PI * 2);
+          ctx.fill();
         }
-        ctx.restore();
+
+        // Draw Neko — short-hair walk sheet only
+        const nFeetX = neko.x + (nekoFrameW * neko.scale) / 2;
+        const nFeetY = neko.y + nekoFrameH * neko.scale;
+        drawNekoShortHair(nFeetX, nFeetY, neko.frame, 1);
       }
+
+      // Gold / inventory HUD
+      drawGoldHud();
 
       // Draw menu on top if open
       if (activeMenu === 'map') {
         drawMapMenu();
+      } else if (activeMenu === 'weaponShop') {
+        drawWeaponShopMenu();
+      } else if (activeMenu === 'clothingShop') {
+        drawClothingShopMenu();
       }
     }
 
-    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    function loop() {
+      try {
+        update();
+        draw();
+      } catch (err) {
+        console.error('Frame error:', err);
+      }
+      requestAnimationFrame(loop);
+    }
   </script>
 </body>
 </html>

@@ -35,6 +35,12 @@
   <canvas id="gameCanvas" width="640" height="480"></canvas>
   <div class="info" id="roomLabel">The Arcane Den</div>
 
+  <!-- Modular forest scenes -->
+  <script src="js/forest_cabin_scene.js"></script>
+  <script src="js/forest_cabin_scenes.js"></script>
+  <script src="js/grassland_scene.js"></script>
+  <script src="js/forest_branches.js"></script>
+
   <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -99,40 +105,113 @@
     const combatDefendSheet = new Image();
     const nekoAttackSheet = new Image();
     const combatFrameCache = {}; // key: 'atk_ani_0' etc.
+    // New location / prop art
+    const warehouseArt = new Image();
+    const forestEntranceArt = new Image();
+    const streetPropsArt = new Image();
+    const mossCabinExtArt = new Image();
+    const mossCabinIntArt = new Image();
+    const grasslandTrailArt = new Image();
+    const forestCampArt = new Image();
+    const mushroomHollowArt = new Image();
+    const kitsuneTempleArt = new Image();
+    const deepThicketArt = new Image();
+    const forestCaveArt = new Image();
+    const mushroomPondArt = new Image();
+    const barMaidenArt = new Image();
+    const rogueSheetArt = new Image(); // garage ambient NPCs (legacy sheet)
+    // Forest combat enemies — separate single-figure sheets
+    const enemy1Art = new Image(); // male bandit
+    const enemy2Art = new Image(); // female rogue
+    const enemy3Art = new Image(); // dog / wolf hound
+    const enemyArts = [enemy1Art, enemy2Art, enemy3Art];
+    const enemyTypeNames = ['Bandit', 'Rogue', 'Hound'];
+    const shopItemsSheet = new Image(); // left: chainmail top, right: health potion
+    const npcSpriteCache = {}; // key → transparent cropped canvas
 
     let currentRoom = 'room';
-    let activeMenu = null; // null | 'map' | 'weaponShop' | 'clothingShop' | 'combat'
+    let activeMenu = null; // null | 'map' | 'weaponShop' | 'clothingShop' | 'barShop' | 'combat'
     let gameStarted = false;
-    let playerGold = 50;
-    let inventory = []; // item ids, e.g. 'fox_sword', 'neko_claws'
+    let playerGold = 100;
+    let inventory = []; // item ids — potions may appear multiple times (stack)
     let shopToast = ''; // brief feedback text
     let shopToastTimer = 0;
     let shopSelected = 0; // weapon shop selected row
 
-    // Training / turn-based combat (warehouse)
-    const trainingBoxHitbox = { x: 470, y: 280, w: 120, h: 90 };
+    // Training / turn-based combat (warehouse) — over the glowing dummy in warehouse art
+    const trainingBoxHitbox = { x: 230, y: 160, w: 180, h: 200 };
     const COMBAT_FRAMES = 5;
     const COMBAT_FRAME_TICKS = 7; // frames per pose (~7/60s)
+
+    // Party combat stats (ATK / DEF / HP) + shared XP / level
+    // Base stats (~+10% over original) so 2v3 forest fights are winnable
+    const partyStats = {
+      ani:  { name: 'Ani',  maxHp: 55, hp: 55, atk: 11, def: 6 },
+      neko: { name: 'Neko', maxHp: 50, hp: 50, atk: 10, def: 5 }
+    };
+    // XP: 5 per kill; L1→L2 needs 30, then each next level +10%
+    const partyProgress = {
+      level: 1,
+      xp: 0,
+      xpToNext: 30
+    };
+    let statsMenuOpen = false; // clickable stats panel (always open during combat)
+
+    // Outdoor forest rooms that can roll random fights (NOT temple, pond, or interiors)
+    const FOREST_ENCOUNTER_ROOMS = {
+      forestEntrance: true,
+      forestPath1: true,   // Moss Trail exterior
+      forestPath2: true,   // Open Grassland
+      forestPath4: true,   // Mushroom Hollow trail
+      forestPath5: true,   // Deep Thicket exterior
+      roadFork: true,
+      forestCamp: true,
+      banditFort: true
+      // excluded: forestPath3 (Kitsune Temple), mushroomPond, cabinInterior, forestCave
+    };
+    // d20: encounter on this roll or higher (~30% at 15)
+    const FOREST_ENCOUNTER_DC = 15;
+
     const combat = {
       active: false,
+      mode: 'training', // 'training' | 'forest'
       turn: 'ani', // 'ani' | 'neko'
       dummyHp: 40,
       dummyMaxHp: 40,
+      enemies: [], // forest: { name, hp, maxHp, atk, def, cell, feetX, feetY }
+      targetIndex: 0,
       defending: { ani: false, neko: false },
       log: 'Training ready.',
       won: false,
+      lost: false,
+      lastRoll: 0,
+      // return to this forest room after arena fight
+      returnRoom: null,
+      returnSpawnX: 300,
+      returnSpawnY: 300,
+      // party feet in arena (even layout)
+      partyFeet: { ani: { x: 160, y: 320 }, neko: { x: 80, y: 320 } },
       // playing attack/defend sheet
       anim: null // { who, type:'attack'|'defend', frame, timer, pending }
     };
 
     // Clickable Whiskers van on the roof (map menu)
     const vanHitbox = { x: 180, y: 300, w: 220, h: 110 };
-    // Weapons merchant feet anchor (right side of shop); hitbox filled each draw
-    const weaponNpcPos = { feetX: 500, feetY: 400 }; // floor position
-    const weaponNpcHitbox = { x: 450, y: 200, w: 100, h: 200 };
-    // Clothing merchant
-    const clothingNpcPos = { feetX: 500, feetY: 400 };
-    const clothingNpcHitbox = { x: 450, y: 200, w: 100, h: 200 };
+    // NPC feet anchors — spread so they don't stack on the party
+    // Weapons merchant (right counter)
+    const weaponNpcPos = { feetX: 530, feetY: 385 };
+    const weaponNpcHitbox = { x: 480, y: 200, w: 100, h: 200 };
+    // Clothing merchant (right rack)
+    const clothingNpcPos = { feetX: 530, feetY: 385 };
+    const clothingNpcHitbox = { x: 480, y: 200, w: 100, h: 200 };
+    // Bar maiden (behind bar / right-center)
+    const barMaidenPos = { feetX: 500, feetY: 380 };
+    const barMaidenHitbox = { x: 450, y: 200, w: 100, h: 200 };
+    // Garage rogues — L3 left side, L4 right side (not stacked)
+    const rogueL3Pos = { feetX: 140, feetY: 385 };
+    const rogueL4Pos = { feetX: 520, feetY: 385 };
+    const rogueL3Hitbox = { x: 90, y: 200, w: 100, h: 200 };
+    const rogueL4Hitbox = { x: 470, y: 200, w: 100, h: 200 };
 
     const rooms = {
       room: {
@@ -161,14 +240,14 @@
           { x: 145, y: 160, w: 140, h: 110, target: 'weaponStore', spawnX: 80, spawnY: 300 },
           { x: 300, y: 160, w: 140, h: 110, target: 'clothingStore', spawnX: 80, spawnY: 300 },
           { x: 455, y: 160, w: 90, h: 110, target: 'bar', spawnX: 80, spawnY: 300 },
-          // Garage exit on the far right
-          { x: 555, y: 175, w: 85, h: 115, target: 'garageStreet', spawnX: 80, spawnY: 200 }
+          // Garage exit on the far right (bike + GARAGE sign prop)
+          { x: 540, y: 160, w: 100, h: 140, target: 'garageStreet', spawnX: 80, spawnY: 200 }
         ]
       },
       garageStreet: {
         name: 'Garage Street',
         doors: [
-          { x: 10, y: 300, w: 100, h: 130, target: 'outside', spawnX: 540, spawnY: 220 },
+          { x: 8, y: 280, w: 120, h: 150, target: 'outside', spawnX: 540, spawnY: 220 },
           // Abandoned building on the left → warehouse
           { x: 90, y: 150, w: 100, h: 140, target: 'warehouse', spawnX: 80, spawnY: 300 },
           // Arch / tunnel into the garage
@@ -185,6 +264,14 @@
         name: 'Warehouse — Training',
         doors: [
           { x: 15, y: 360, w: 90, h: 90, target: 'warehouse', spawnX: 100, spawnY: 300 }
+        ]
+      },
+      // Minimal grass arena used for forest ambushes
+      forestBattle: {
+        name: 'Forest Skirmish',
+        doors: [
+          // target rewritten when a fight starts (return to previous forest room)
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 300, spawnY: 300 }
         ]
       },
       parkingGarage: {
@@ -262,24 +349,81 @@
         ]
       },
       forestPath1: {
-        name: 'Forest — Moss Trail',
-        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 80, spawnY: 220 }]
+        name: 'Moss Trail — Cabin',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 80, spawnY: 220 },
+          // Cabin porch door → interior (matches moss cabin exterior art)
+          { x: 330, y: 200, w: 80, h: 110, target: 'cabinInterior', spawnX: 300, spawnY: 300 }
+        ]
+      },
+      cabinInterior: {
+        name: 'Moss Cabin — Interior',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestPath1', spawnX: 380, spawnY: 300 }
+        ]
       },
       forestPath2: {
-        name: 'Forest — Firefly Creek',
-        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 200, spawnY: 200 }]
+        name: 'Open Grassland',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 200, spawnY: 200 },
+          // Dirt trail continues to road fork
+          { x: 250, y: 80, w: 140, h: 100, target: 'roadFork', spawnX: 300, spawnY: 320 }
+        ]
+      },
+      roadFork: {
+        name: 'Road Fork',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestPath2', spawnX: 300, spawnY: 280 },
+          // Left → wooded camp
+          { x: 40, y: 100, w: 130, h: 90, target: 'forestCamp', spawnX: 300, spawnY: 320 },
+          // Right → bandit fort
+          { x: 470, y: 100, w: 130, h: 90, target: 'banditFort', spawnX: 300, spawnY: 320 }
+        ]
+      },
+      forestCamp: {
+        name: 'Wooded Camp',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'roadFork', spawnX: 100, spawnY: 220 }
+        ]
+      },
+      banditFort: {
+        name: 'Bandit Fort',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'roadFork', spawnX: 520, spawnY: 220 }
+        ]
       },
       forestPath3: {
-        name: 'Forest — Ancient Grove',
+        name: 'Ancient Grove — Kitsune Temple',
         doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 320, spawnY: 190 }]
       },
       forestPath4: {
-        name: 'Forest — Mushroom Hollow',
-        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 440, spawnY: 200 }]
+        name: 'Mushroom Hollow',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 440, spawnY: 200 },
+          // Trail continues to giant mushroom pond
+          { x: 250, y: 80, w: 140, h: 100, target: 'mushroomPond', spawnX: 300, spawnY: 340 }
+        ]
+      },
+      mushroomPond: {
+        name: 'Giant Mushroom Pond',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestPath4', spawnX: 300, spawnY: 280 }
+        ]
       },
       forestPath5: {
-        name: 'Forest — Deep Thicket',
-        doors: [{ x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 540, spawnY: 220 }]
+        name: 'Deep Thicket',
+        doors: [
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestEntrance', spawnX: 540, spawnY: 220 },
+          // Cave mouth on the right of the thick-forest art
+          { x: 420, y: 140, w: 150, h: 160, target: 'forestCave', spawnX: 280, spawnY: 300 }
+        ]
+      },
+      forestCave: {
+        name: 'Forest Cave',
+        doors: [
+          // Exit back onto the thicket near the cave mouth
+          { x: 15, y: 360, w: 90, h: 90, target: 'forestPath5', spawnX: 400, spawnY: 300 }
+        ]
       },
       dreamcore: {
         name: 'Dreamcore Limbo',
@@ -389,6 +533,27 @@
     combatAttackSheet.src = 'assets/combat_attack_sheet.png';
     combatDefendSheet.src = 'assets/combat_defend_sheet.png';
     nekoAttackSheet.src = 'assets/neko_attack_sheet.png';
+    warehouseArt.src = 'assets/warehouse_int.png';
+    forestEntranceArt.src = 'assets/forest_entrance.png';
+    streetPropsArt.src = 'assets/street_props.png';
+    streetPropsArt.onerror = () => {
+      console.warn('street_props.png failed — will use procedural bike/bench');
+    };
+    mossCabinExtArt.src = 'assets/moss_cabin_ext.png';
+    mossCabinIntArt.src = 'assets/moss_cabin_int.png';
+    grasslandTrailArt.src = 'assets/grassland_trail.png';
+    forestCampArt.src = 'assets/forest_camp.png';
+    mushroomHollowArt.src = 'assets/mushroom_hollow.png';
+    kitsuneTempleArt.src = 'assets/kitsune_temple.png';
+    deepThicketArt.src = 'assets/deep_thicket.png';
+    forestCaveArt.src = 'assets/forest_cave.png';
+    mushroomPondArt.src = 'assets/mushroom_pond.png';
+    barMaidenArt.src = 'assets/bar_maiden.png';
+    rogueSheetArt.src = 'assets/rogue_sheet.png';
+    enemy1Art.src = 'assets/enemy1.png';
+    enemy2Art.src = 'assets/enemy2.png';
+    enemy3Art.src = 'assets/enemy3.png';
+    shopItemsSheet.src = 'assets/shop_items_sheet.png';
 
     // If already cached & complete before handlers, kick off manually
     if (sheet.complete && sheet.naturalWidth > 0) {
@@ -546,16 +711,92 @@
       }
     }
 
+    function rollDie(sides) {
+      return 1 + Math.floor(Math.random() * sides);
+    }
+
+    function inventoryCount(id) {
+      let n = 0;
+      for (let i = 0; i < inventory.length; i++) if (inventory[i] === id) n++;
+      return n;
+    }
+
+    function removeOneFromInventory(id) {
+      const i = inventory.indexOf(id);
+      if (i >= 0) { inventory.splice(i, 1); return true; }
+      return false;
+    }
+
+    function getEffectiveAtk(who) {
+      let atk = partyStats[who].atk;
+      // Weapon store items: +2 ATK each (Ani katana / Neko claws)
+      if (who === 'ani' && inventory.indexOf('fox_sword') >= 0) atk += 2;
+      if (who === 'neko' && inventory.indexOf('neko_claws') >= 0) atk += 2;
+      return atk;
+    }
+
+    function getEffectiveDef(who) {
+      let def = partyStats[who].def;
+      // Chainmail top from clothing store: +2 DEF (party-wide armor)
+      if (inventory.indexOf('chainmail') >= 0) def += 2;
+      return def;
+    }
+
+    // Damage after target DEF (min 1)
+    function calcDamage(atk, def, defending) {
+      let dmg = Math.max(1, atk - Math.floor(def / 2));
+      if (defending) dmg = Math.max(1, Math.floor(dmg * 0.35));
+      return dmg;
+    }
+
+    function livingEnemyCount() {
+      let n = 0;
+      for (let i = 0; i < combat.enemies.length; i++) {
+        if (combat.enemies[i].hp > 0) n++;
+      }
+      return n;
+    }
+
+    function firstLivingEnemyIndex() {
+      for (let i = 0; i < combat.enemies.length; i++) {
+        if (combat.enemies[i].hp > 0) return i;
+      }
+      return -1;
+    }
+
+    function ensureValidTarget() {
+      if (!combat.enemies.length) return;
+      if (combat.targetIndex < 0 || combat.targetIndex >= combat.enemies.length ||
+          combat.enemies[combat.targetIndex].hp <= 0) {
+        combat.targetIndex = firstLivingEnemyIndex();
+      }
+    }
+
+    function partyAllDown() {
+      return partyStats.ani.hp <= 0 && partyStats.neko.hp <= 0;
+    }
+
     function changeRoom(target, spawnX, spawnY) {
       if (!rooms[target]) {
         console.warn('Unknown room:', target);
         return;
       }
-      currentRoom = target;
-      if (target !== 'warehouseBattle') {
+      // Clear combat when leaving battle arenas (those rooms set combat themselves on enter)
+      if (target !== 'warehouseBattle' && target !== 'forestBattle') {
+        // After a KO, limp away with some HP so the run can continue
+        if (combat.lost || partyStats.ani.hp <= 0 || partyStats.neko.hp <= 0) {
+          if (partyStats.ani.hp <= 0) partyStats.ani.hp = Math.max(1, Math.floor(partyStats.ani.maxHp * 0.25));
+          if (partyStats.neko.hp <= 0) partyStats.neko.hp = Math.max(1, Math.floor(partyStats.neko.maxHp * 0.25));
+        }
         combat.active = false;
-        activeMenu = null;
+        combat.enemies = [];
+        combat.won = false;
+        combat.lost = false;
+        combat.mode = 'training';
+        combat.returnRoom = null;
+        if (activeMenu === 'combat') activeMenu = null;
       }
+      currentRoom = target;
       ani.x = spawnX; ani.y = spawnY;
       ani.targetX = spawnX; ani.targetY = spawnY;
       neko.x = spawnX - 90;
@@ -563,34 +804,198 @@
       neko.targetX = neko.x;
       neko.targetY = neko.y;
       roomLabel.textContent = rooms[currentRoom].name;
+
+      // Forest encounter roll when entering an eligible outdoor forest room
+      if (FOREST_ENCOUNTER_ROOMS[target]) {
+        tryForestEncounter(target);
+      }
+    }
+
+    // Evenly space N units across the grass strip (feet positions)
+    function evenFeetAcross(count, y, leftX, rightX) {
+      const pts = [];
+      if (count <= 0) return pts;
+      if (count === 1) {
+        pts.push({ x: (leftX + rightX) / 2, y: y });
+        return pts;
+      }
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1);
+        pts.push({ x: leftX + (rightX - leftX) * t, y: y });
+      }
+      return pts;
+    }
+
+    // Layout: party LEFT, enemies RIGHT — clear gap so wide sprites don't stack
+    function layoutForestArena(enemyCount) {
+      const feetY = 310; // on grass strip, above combat menu (y=370)
+      // Girls evenly on left (slightly wider for larger Neko/Ani)
+      const party = evenFeetAcross(2, feetY, 55, 230);
+      combat.partyFeet.neko = { x: party[0].x, y: party[0].y };
+      combat.partyFeet.ani = { x: party[1].x, y: party[1].y };
+      // Enemies evenly on right half (matched size, spaced)
+      return evenFeetAcross(enemyCount, feetY, 330, 590);
+    }
+
+    // Grant XP for a kill; level up when threshold reached (+10% next req)
+    function grantKillXp(amount) {
+      const n = amount == null ? 5 : amount;
+      partyProgress.xp += n;
+      let leveled = 0;
+      while (partyProgress.xp >= partyProgress.xpToNext) {
+        partyProgress.xp -= partyProgress.xpToNext;
+        partyProgress.level++;
+        leveled++;
+        // +10% XP required each level (ceil so it always grows)
+        partyProgress.xpToNext = Math.max(
+          partyProgress.xpToNext + 1,
+          Math.ceil(partyProgress.xpToNext * 1.1)
+        );
+        // Small permanent stat bumps on level-up
+        partyStats.ani.maxHp += 3;
+        partyStats.ani.hp = Math.min(partyStats.ani.maxHp, partyStats.ani.hp + 3);
+        partyStats.ani.atk += 1;
+        partyStats.neko.maxHp += 3;
+        partyStats.neko.hp = Math.min(partyStats.neko.maxHp, partyStats.neko.hp + 3);
+        partyStats.neko.atk += 1;
+      }
+      if (leveled > 0) {
+        shopToast = 'LEVEL UP! Now Lv ' + partyProgress.level +
+          '  (next in ' + partyProgress.xpToNext + ' XP)';
+        shopToastTimer = 180;
+      }
+      return n;
+    }
+
+    // Enemies scale below average party ATK/DEF/HP
+    function buildForestEnemies(count) {
+      const avgAtk = (getEffectiveAtk('ani') + getEffectiveAtk('neko')) / 2;
+      const avgDef = (getEffectiveDef('ani') + getEffectiveDef('neko')) / 2;
+      const avgHp = (partyStats.ani.maxHp + partyStats.neko.maxHp) / 2;
+      // Enemies scale off party averages — keep them a clear step below
+      // (0.75 ≈ 25% weaker; old 0.85 made 2v3 too swingy even with potions)
+      const scale = 0.75;
+      const eAtk = Math.max(1, Math.floor(avgAtk * scale));
+      const eDef = Math.max(1, Math.floor(avgDef * scale));
+      const eHp = Math.max(8, Math.floor(avgHp * scale));
+      const enemyFeet = layoutForestArena(count);
+      const enemies = [];
+      // Prefer unique types when 1–3: Bandit, Rogue, Hound
+      for (let i = 0; i < count; i++) {
+        const type = i % 3;
+        enemies.push({
+          name: enemyTypeNames[type] || ('Enemy ' + (i + 1)),
+          hp: eHp,
+          maxHp: eHp,
+          atk: eAtk,
+          def: eDef,
+          artIndex: type, // 0=male, 1=female, 2=hound
+          feetX: enemyFeet[i].x,
+          feetY: enemyFeet[i].y
+        });
+      }
+      return enemies;
+    }
+
+    function tryForestEncounter(roomId) {
+      if (!FOREST_ENCOUNTER_ROOMS[roomId]) return;
+      if (combat.active) return;
+      const roll = rollDie(20);
+      combat.lastRoll = roll;
+      if (roll < FOREST_ENCOUNTER_DC) {
+        shopToast = 'd20: ' + roll + ' (need ' + FOREST_ENCOUNTER_DC + '+) — path is clear.';
+        shopToastTimer = 100;
+        return;
+      }
+      const count = rollDie(3); // 1–3 enemies
+      startForestBattle(count, roll, roomId);
+    }
+
+    function startForestBattle(count, roll, fromRoom) {
+      // Remember where we came from so Continue returns there
+      combat.returnRoom = fromRoom || currentRoom || 'forestEntrance';
+      combat.returnSpawnX = typeof ani.x === 'number' ? ani.x : 300;
+      combat.returnSpawnY = typeof ani.y === 'number' ? ani.y : 300;
+
+      combat.active = true;
+      combat.mode = 'forest';
+      combat.enemies = buildForestEnemies(count);
+      combat.targetIndex = 0;
+      combat.turn = partyStats.ani.hp > 0 ? 'ani' : 'neko';
+      combat.defending.ani = false;
+      combat.defending.neko = false;
+      combat.won = false;
+      combat.lost = false;
+      combat.anim = null;
+      combat.log = 'd20=' + roll + '! ' + count + ' rogue' + (count > 1 ? 's' : '') +
+        ' appear! (weaker than you)';
+      activeMenu = 'combat';
+      shopToast = 'AMBUSH! Entering skirmish field…';
+      shopToastTimer = 100;
+
+      // Wire exit pad back to the forest room we left
+      if (rooms.forestBattle && rooms.forestBattle.doors[0]) {
+        rooms.forestBattle.doors[0].target = combat.returnRoom;
+        rooms.forestBattle.doors[0].spawnX = combat.returnSpawnX;
+        rooms.forestBattle.doors[0].spawnY = combat.returnSpawnY;
+      }
+
+      // Switch to empty grass arena (skip changeRoom so combat is not cleared)
+      currentRoom = 'forestBattle';
+      roomLabel.textContent = rooms.forestBattle.name;
+
+      // Snap party to laid-out feet
+      const af = combat.partyFeet.ani;
+      const nf = combat.partyFeet.neko;
+      const aniDrawH = frameH * ani.scale * 0.95;
+      const nekoDrawH = nekoFrameH * neko.scale * 0.95;
+      ani.x = af.x - (frameW * ani.scale * 0.95) / 2;
+      ani.y = af.y - aniDrawH;
+      ani.targetX = ani.x; ani.targetY = ani.y;
+      ani.facing = 1;
+      neko.x = nf.x - (nekoFrameW * neko.scale * 0.95) / 2;
+      neko.y = nf.y - nekoDrawH;
+      neko.targetX = neko.x; neko.targetY = neko.y;
+      neko.facing = 1;
     }
 
     function startWarehouseBattle() {
       combat.active = true;
+      combat.mode = 'training';
+      combat.enemies = [];
       combat.turn = 'ani';
       combat.dummyHp = combat.dummyMaxHp;
       combat.defending.ani = false;
       combat.defending.neko = false;
       combat.log = "Ani's turn — choose Attack or Defend.";
       combat.won = false;
+      combat.lost = false;
       combat.anim = null;
       // Spawn already standing above the speech bar (left half)
-      changeRoom('warehouseBattle', 140, 200);
+      // bypass forest encounter by setting room directly
+      currentRoom = 'warehouseBattle';
+      ani.x = 140; ani.y = 200;
+      ani.targetX = 140; ani.targetY = 200;
       neko.x = 40; neko.y = 220;
       neko.targetX = neko.x; neko.targetY = neko.y;
+      roomLabel.textContent = rooms[currentRoom].name;
       activeMenu = 'combat';
     }
 
     function combatAttack() {
-      if (!combat.active || combat.won || combat.anim) return;
+      if (!combat.active || combat.won || combat.lost || combat.anim) return;
+      if (partyStats[combat.turn].hp <= 0) return;
       const who = combat.turn;
-      const name = who === 'ani' ? 'Ani' : 'Neko';
-      let dmg = who === 'ani' ? 8 : 7;
-      if (who === 'ani' && inventory.indexOf('fox_sword') >= 0) dmg += 3;
-      if (who === 'neko' && inventory.indexOf('neko_claws') >= 0) dmg += 3;
+      const name = partyStats[who].name;
+      let targetDef = 4; // training dummy
+      if (combat.mode === 'forest') {
+        ensureValidTarget();
+        if (combat.targetIndex < 0) return;
+        targetDef = combat.enemies[combat.targetIndex].def;
+      }
+      const dmg = calcDamage(getEffectiveAtk(who), targetDef, false);
       combat.defending[who] = false;
       combat.log = name + ' attacks...';
-      // Ani: 5-frame sheet; Neko: 4-frame short-hair swing sheet (frames 1–4)
       combat.anim = {
         who: who,
         type: 'attack',
@@ -602,9 +1007,10 @@
     }
 
     function combatDefend() {
-      if (!combat.active || combat.won || combat.anim) return;
+      if (!combat.active || combat.won || combat.lost || combat.anim) return;
+      if (partyStats[combat.turn].hp <= 0) return;
       const who = combat.turn;
-      const name = who === 'ani' ? 'Ani' : 'Neko';
+      const name = partyStats[who].name;
       combat.defending[who] = true;
       combat.log = name + ' braces to defend...';
       combat.anim = {
@@ -617,6 +1023,36 @@
       };
     }
 
+    // Use one potion from inventory: +25 HP (capped at max), ends the turn
+    function combatHeal() {
+      if (!combat.active || combat.won || combat.lost || combat.anim) return;
+      const who = combat.turn;
+      if (partyStats[who].hp <= 0) return;
+      if (inventoryCount('potion') <= 0) {
+        combat.log = 'No potions in inventory!';
+        return;
+      }
+      const st = partyStats[who];
+      if (st.hp >= st.maxHp) {
+        combat.log = st.name + ' is already at full HP.';
+        return;
+      }
+      removeOneFromInventory('potion');
+      const before = st.hp;
+      st.hp = Math.min(st.maxHp, st.hp + 25);
+      const gained = st.hp - before;
+      combat.defending[who] = false;
+      combat.log = st.name + ' drinks a potion (+' + gained + ' HP). ' +
+        inventoryCount('potion') + ' left.';
+      // Heal still ends the turn — enemies get a swing
+      if (combat.mode === 'forest') {
+        forestEnemyStrikes(who);
+      } else {
+        dummyCounterstrike(st.name, who);
+      }
+      if (!combat.lost) advanceCombatTurn();
+    }
+
     function finishCombatAction() {
       if (!combat.anim || !combat.anim.pending) {
         combat.anim = null;
@@ -625,6 +1061,12 @@
       const p = combat.anim.pending;
       combat.anim = null;
 
+      if (combat.mode === 'forest') {
+        finishForestAction(p);
+        return;
+      }
+
+      // Training dummy path
       if (p.kind === 'attack') {
         combat.dummyHp = Math.max(0, combat.dummyHp - p.dmg);
         combat.log = p.name + ' hits for ' + p.dmg + '!';
@@ -642,11 +1084,103 @@
       advanceCombatTurn();
     }
 
+    // Gold + potion loot after a forest clear
+    function applyForestVictoryLoot() {
+      const n = combat.enemies.length;
+      // 10 gold per enemy defeated (already paid per kill; this is a summary pass)
+      // Per-kill already adds 10g — don't double-pay here. Only potion bonus + toast.
+      let potDrop = false;
+      if (n >= 3) {
+        // 3v2 always drops a potion
+        potDrop = true;
+      } else if (n === 2) {
+        // 2v2: sometimes (~45%)
+        potDrop = Math.random() < 0.45;
+      }
+      if (potDrop) {
+        inventory.push('potion');
+      }
+      const goldTotal = n * 10;
+      let msg = 'Victory! +' + goldTotal + 'g';
+      if (potDrop) msg += ' + potion!';
+      msg += '  Lv' + partyProgress.level +
+        ' (' + partyProgress.xp + '/' + partyProgress.xpToNext + ' XP)';
+      combat.log += ' ' + msg;
+      shopToast = msg;
+      shopToastTimer = 180;
+      return { goldTotal: goldTotal, potDrop: potDrop };
+    }
+
+    function finishForestAction(p) {
+      if (p.kind === 'attack') {
+        ensureValidTarget();
+        if (combat.targetIndex < 0) {
+          combat.won = true;
+          applyForestVictoryLoot();
+          return;
+        }
+        const e = combat.enemies[combat.targetIndex];
+        e.hp = Math.max(0, e.hp - p.dmg);
+        combat.log = p.name + ' hits ' + e.name + ' for ' + p.dmg + '!';
+        if (e.hp <= 0) {
+          const xpGot = grantKillXp(5);
+          // Always 10 gold per enemy defeated
+          playerGold += 10;
+          combat.log += ' ' + e.name + ' falls! (+' + xpGot + ' XP, +10g)';
+        }
+        if (livingEnemyCount() <= 0) {
+          combat.won = true;
+          applyForestVictoryLoot();
+          return;
+        }
+        ensureValidTarget();
+        forestEnemyStrikes(p.who);
+      } else {
+        combat.log = p.name + ' braces to defend.';
+        forestEnemyStrikes(p.who);
+      }
+      if (combat.lost) return;
+      advanceCombatTurn();
+    }
+
+    function forestEnemyStrikes(targetWho) {
+      if (combat.won || combat.lost) return;
+      // Each living enemy swings at the character who just acted (or a living ally)
+      let who = targetWho;
+      if (partyStats[who].hp <= 0) {
+        who = partyStats.ani.hp > 0 ? 'ani' : 'neko';
+      }
+      for (let i = 0; i < combat.enemies.length; i++) {
+        const e = combat.enemies[i];
+        if (e.hp <= 0) continue;
+        if (partyAllDown()) break;
+        // Prefer the acting character; if down, hit whoever still stands
+        let t = who;
+        if (partyStats[t].hp <= 0) t = partyStats.ani.hp > 0 ? 'ani' : 'neko';
+        if (partyStats[t].hp <= 0) break;
+        const dmg = calcDamage(e.atk, getEffectiveDef(t), combat.defending[t]);
+        partyStats[t].hp = Math.max(0, partyStats[t].hp - dmg);
+        const tName = partyStats[t].name;
+        if (combat.defending[t]) {
+          combat.log += ' ' + e.name + ' hits ' + tName + ' for ' + dmg + ' (blocked).';
+        } else {
+          combat.log += ' ' + e.name + ' hits ' + tName + ' for ' + dmg + '.';
+        }
+      }
+      if (partyAllDown()) {
+        combat.lost = true;
+        combat.log += ' Your party is down! Flee to the van when you can.';
+        shopToast = 'Defeated… FLEE TO VAN to escape the forest.';
+        shopToastTimer = 160;
+      }
+    }
+
     function dummyCounterstrike(targetName, who) {
       if (combat.won || combat.dummyHp <= 0) return;
-      let dmg = 4;
+      // Dummy atk ~ scaled slightly under party for training feel
+      const dmg = calcDamage(6, getEffectiveDef(who), combat.defending[who]);
+      partyStats[who].hp = Math.max(0, partyStats[who].hp - dmg);
       if (combat.defending[who]) {
-        dmg = 1;
         combat.log += ' Dummy hits ' + targetName + ' for ' + dmg + ' (blocked).';
       } else {
         combat.log += ' Dummy hits ' + targetName + ' for ' + dmg + '.';
@@ -654,49 +1188,61 @@
     }
 
     function advanceCombatTurn() {
-      combat.turn = combat.turn === 'ani' ? 'neko' : 'ani';
-      const next = combat.turn === 'ani' ? 'Ani' : 'Neko';
-      if (!combat.won) {
-        combat.log += '  → ' + next + "'s turn.";
+      // Prefer next living party member
+      const order = combat.turn === 'ani' ? ['neko', 'ani'] : ['ani', 'neko'];
+      let next = null;
+      for (let i = 0; i < order.length; i++) {
+        if (partyStats[order[i]].hp > 0) { next = order[i]; break; }
+      }
+      if (!next) {
+        combat.lost = true;
+        return;
+      }
+      combat.turn = next;
+      if (!combat.won && !combat.lost) {
+        combat.log += '  → ' + partyStats[next].name + "'s turn.";
       }
     }
 
-    // Combat sheets are 4 columns × 3 rows:
-    //   left half (cols 0-1) = Ani, right half (cols 2-3) = Neko
-    //   5 poses in a 2×3 block (reading order; 5th = bottom-right cell)
+    // Combat sheets: title banner on top, then 2×3 pose grid per character.
+    // Left half = Ani, right half = Neko. Frames 0..4 = poses 1..5.
     function getCombatPose(who, type, frameIndex) {
-      const key = 'v2_' + type + '_' + who + '_' + frameIndex;
+      // v6: lighter top crop so Ani's head/ears aren't cut; still skip sheet title
+      const key = 'v6_' + type + '_' + who + '_' + frameIndex;
       if (combatFrameCache[key]) return combatFrameCache[key];
       const sheetImg = type === 'defend' ? combatDefendSheet : combatAttackSheet;
       if (!sheetImg.complete || !sheetImg.naturalWidth) return null;
 
-      const cols = 4;
-      const rows = 3;
-      const fw = Math.floor(sheetImg.naturalWidth / cols);
-      const fh = Math.floor(sheetImg.naturalHeight / rows);
+      const iw = sheetImg.naturalWidth;
+      const ih = sheetImg.naturalHeight;
+      // Title banner only ("Ani - Foxgirl Katana…") — keep small so heads stay in frame
+      const titleH = Math.floor(ih * 0.09);
+      const bodyH = ih - titleH;
+      const halfW = Math.floor(iw / 2);
+      const baseX = who === 'neko' ? halfW : 0;
 
-      // Local 2×3 block positions for frames 0..4
-      const localOrder = [
-        [0, 0], // 1
-        [1, 0], // 2
-        [0, 1], // 3
-        [1, 1], // 4
-        [1, 2]  // 5 (bottom-right of character block)
+      // 2 cols × 3 rows of poses in the body area (below titles)
+      const cols = 2, rows = 3;
+      const fw = Math.floor(halfW / cols);
+      const fh = Math.floor(bodyH / rows);
+
+      // Sheet labels: top 1,2 / mid / bot 4,5
+      const orderAni = [
+        [0, 0], [1, 0], [0, 1], [1, 1], [1, 2]
       ];
-      const fi = Math.max(0, Math.min(COMBAT_FRAMES - 1, frameIndex));
-      const lc = localOrder[fi][0];
-      const lr = localOrder[fi][1];
-      // Neko is on the right half of the sheet
-      const col = who === 'neko' ? lc + 2 : lc;
-      const row = lr;
 
-      // Inset so we don't pull in neighbor poses / labels
-      const padX = Math.floor(fw * 0.06);
-      const padY = Math.floor(fh * 0.08);
-      const sx = col * fw + padX;
-      const sy = row * fh + padY;
-      const sw = fw - padX * 2;
-      const sh = fh - padY * 2;
+      const fi = Math.max(0, Math.min(COMBAT_FRAMES - 1, frameIndex));
+      const lc = orderAni[fi][0];
+      const lr = orderAni[fi][1];
+
+      // Minimal top pad (heads + ears), almost no bottom pad (legs)
+      const padX = Math.floor(fw * 0.08);
+      const padTop = Math.floor(fh * 0.04);
+      const padBot = Math.floor(fh * 0.02);
+      const sx = baseX + lc * fw + padX;
+      const sy = titleH + lr * fh + padTop;
+      const sw = Math.max(8, fw - padX * 2);
+      const sh = Math.max(8, fh - padTop - padBot);
 
       const cached = document.createElement('canvas');
       cached.width = sw;
@@ -705,7 +1251,7 @@
       try {
         c.clearRect(0, 0, sw, sh);
         c.drawImage(sheetImg, sx, sy, sw, sh, 0, 0, sw, sh);
-        // Strip black / near-black sheet background
+        // Strip black sheet bg + pure white pose cards
         try {
           const imgData = c.getImageData(0, 0, sw, sh);
           const data = imgData.data;
@@ -715,7 +1261,8 @@
             const minc = Math.min(r, g, b);
             const lum = (r + g + b) / 3;
             if (lum < 22) { data[i + 3] = 0; continue; }
-            if (lum > 230 && (maxc - minc) < 30) { data[i + 3] = 0; continue; }
+            // white / near-white card behind figure
+            if (lum > 225 && (maxc - minc) < 35) { data[i + 3] = 0; continue; }
           }
           c.putImageData(imgData, 0, 0);
         } catch (err) { /* file:// may block */ }
@@ -757,7 +1304,7 @@
     // Neko short-hair attack sheet: 2×2 main poses
     // 0 wind-up, 1 mid slash, 2 follow-through, 3 idle stance
     function getNekoSwingPose(frameIndex) {
-      const key = 'neko_swing_' + frameIndex;
+      const key = 'neko_swing_v2_' + frameIndex;
       if (combatFrameCache[key]) return combatFrameCache[key];
       if (!nekoAttackSheet.complete || !nekoAttackSheet.naturalWidth) return null;
 
@@ -768,10 +1315,10 @@
       const col = fi % 2;
       const row = Math.floor(fi / 2);
 
-      // Inset: bottom row has tiny reference art — crop more from bottom
-      const padX = Math.floor(fw * 0.06);
-      const padTop = Math.floor(fh * 0.06);
-      const padBot = row === 1 ? Math.floor(fh * 0.22) : Math.floor(fh * 0.08);
+      // Keep more of the figure (legs); light side inset only
+      const padX = Math.floor(fw * 0.08);
+      const padTop = Math.floor(fh * 0.05);
+      const padBot = Math.floor(fh * 0.04);
       const sx = col * fw + padX;
       const sy = row * fh + padTop;
       const sw = fw - padX * 2;
@@ -800,36 +1347,42 @@
       }
     }
 
+    // Fit a sprite into max box (contain) so wide sheet crops never dominate the arena
+    function fitSpriteSize(srcW, srcH, maxW, maxH) {
+      const sc = Math.min(maxW / srcW, maxH / srcH);
+      return { dw: srcW * sc, dh: srcH * sc, sc: sc };
+    }
+
     // Draw fighter — Ani: long swing sheets; Neko: short-hair swing sheet 1–4 for attack
+    // Shared scale band so party + bandits read the same size on the grass
     function drawCombatFighter(who, feetX, feetY) {
-      const targetH = frameH * ani.scale * 0.95;
+      // Neko a bit taller than Ani; both larger than previous cap
+      const maxH = who === 'neko' ? 185 : 170;
+      const maxW = who === 'neko' ? 110 : 100;
 
       // ---- Neko: short-hair only ----
       if (who === 'neko') {
         let pose = null;
         if (combat.anim && combat.anim.who === 'neko' && combat.anim.type === 'attack') {
-          // Swing frames 1–4 (indices 0–3)
           pose = getNekoSwingPose(combat.anim.frame);
         } else if (combat.anim && combat.anim.who === 'neko' && combat.anim.type === 'defend') {
-          // Defend: idle stance (frame 4) then slight crouch (frame 1)
           pose = getNekoSwingPose(combat.anim.frame === 0 ? 3 : 0);
         } else if (combat.defending.neko) {
-          pose = getNekoSwingPose(3); // idle combat stance
+          pose = getNekoSwingPose(3);
         } else {
-          pose = getNekoSwingPose(3); // ready idle in battle
+          pose = getNekoSwingPose(3);
         }
 
         if (!pose) {
-          drawNekoShortHair(feetX, feetY, NEKO_IDLE, 0.95);
+          drawNekoShortHair(feetX, feetY, NEKO_IDLE, 0.88);
         } else {
-          const sc = targetH / pose.height;
-          const dw = pose.width * sc;
-          const dh = pose.height * sc;
+          const fit = fitSpriteSize(pose.width, pose.height, maxW, maxH);
+          const dw = fit.dw, dh = fit.dh;
           const dx = feetX - dw / 2;
           const dy = feetY - dh;
           ctx.fillStyle = 'rgba(0,0,0,0.28)';
           ctx.beginPath();
-          ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+          ctx.ellipse(feetX, feetY - 2, dw * 0.28, 6, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.drawImage(pose, dx, dy, dw, dh);
 
@@ -861,21 +1414,20 @@
       if (!pose) {
         const clean = getCleanFrame(IDLE_FRAME);
         if (clean) {
-          const dw = frameW * ani.scale * 0.9, dh = frameH * ani.scale * 0.9;
-          ctx.drawImage(clean, 0, 0, frameW, frameH, feetX - dw / 2, feetY - dh, dw, dh);
+          const fit = fitSpriteSize(frameW, frameH, maxW, maxH);
+          ctx.drawImage(clean, 0, 0, frameW, frameH, feetX - fit.dw / 2, feetY - fit.dh, fit.dw, fit.dh);
         }
         return;
       }
 
-      const sc = targetH / pose.height;
-      const dw = pose.width * sc;
-      const dh = pose.height * sc;
+      const fit = fitSpriteSize(pose.width, pose.height, maxW, maxH);
+      const dw = fit.dw, dh = fit.dh;
       const dx = feetX - dw / 2;
       const dy = feetY - dh;
 
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
-      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 6, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.drawImage(pose, dx, dy, dw, dh);
@@ -922,7 +1474,7 @@
       if (activeMenu === 'weaponShop') {
         // Select item rows
         if (mx >= 95 && mx <= 545 && my >= 135 && my <= 210) {
-          shopSelected = 0; // fox blade
+          shopSelected = 0; // fox blade / katana
           return;
         }
         if (mx >= 95 && mx <= 545 && my >= 215 && my <= 290) {
@@ -932,11 +1484,11 @@
         // Buy button
         if (mx >= 360 && mx <= 440 && my >= 310 && my <= 350) {
           const items = [
-            { id: 'fox_sword', name: 'Fox Blade', price: 20 },
-            { id: 'neko_claws', name: 'Neko Claws', price: 20 }
+            { id: 'fox_sword', name: 'Fox Katana', price: 20, unique: true },
+            { id: 'neko_claws', name: 'Neko Claws', price: 20, unique: true }
           ];
           const item = items[shopSelected] || items[0];
-          if (inventory.indexOf(item.id) >= 0) {
+          if (item.unique && inventory.indexOf(item.id) >= 0) {
             shopToast = 'You already own ' + item.name + '.';
             shopToastTimer = 120;
           } else if (playerGold < item.price) {
@@ -945,7 +1497,7 @@
           } else {
             playerGold -= item.price;
             inventory.push(item.id);
-            shopToast = 'Purchased ' + item.name + '!';
+            shopToast = 'Purchased ' + item.name + '! (+2 ATK)';
             shopToastTimer = 120;
           }
           return;
@@ -966,13 +1518,68 @@
       }
 
       if (activeMenu === 'clothingShop') {
-        // Close button
+        // Select chainmail row
+        if (mx >= 95 && mx <= 545 && my >= 140 && my <= 230) {
+          shopSelected = 0;
+          return;
+        }
+        // Buy
+        if (mx >= 360 && mx <= 440 && my >= 300 && my <= 340) {
+          const item = { id: 'chainmail', name: 'Chainmail Top', price: 25 };
+          if (inventory.indexOf(item.id) >= 0) {
+            shopToast = 'You already own ' + item.name + '.';
+            shopToastTimer = 120;
+          } else if (playerGold < item.price) {
+            shopToast = 'Not enough gold! (need ' + item.price + ')';
+            shopToastTimer = 120;
+          } else {
+            playerGold -= item.price;
+            inventory.push(item.id);
+            shopToast = 'Purchased Chainmail Top! (+2 DEF)';
+            shopToastTimer = 120;
+          }
+          return;
+        }
+        // Close
         if (mx >= 460 && mx <= 550 && my >= 300 && my <= 340) {
           activeMenu = null;
           shopToast = '';
           return;
         }
-        // Outside panel closes
+        if (mx < 70 || mx > 570 || my < 70 || my > 380) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
+        return;
+      }
+
+      if (activeMenu === 'barShop') {
+        // Select potion row
+        if (mx >= 95 && mx <= 545 && my >= 140 && my <= 230) {
+          shopSelected = 0;
+          return;
+        }
+        // Buy potion (stackable)
+        if (mx >= 360 && mx <= 440 && my >= 300 && my <= 340) {
+          const price = 12;
+          if (playerGold < price) {
+            shopToast = 'Not enough gold! (need ' + price + ')';
+            shopToastTimer = 120;
+          } else {
+            playerGold -= price;
+            inventory.push('potion');
+            shopToast = 'Bought Health Potion! (+25 HP when used)  x' + inventoryCount('potion');
+            shopToastTimer = 140;
+          }
+          return;
+        }
+        // Close
+        if (mx >= 460 && mx <= 550 && my >= 300 && my <= 340) {
+          activeMenu = null;
+          shopToast = '';
+          return;
+        }
         if (mx < 70 || mx > 570 || my < 70 || my > 380) {
           activeMenu = null;
           shopToast = '';
@@ -1006,7 +1613,38 @@
         const n = clothingNpcHitbox;
         if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
           activeMenu = 'clothingShop';
+          shopSelected = 0;
           shopToast = '';
+          return;
+        }
+      }
+
+      // Bar maiden click — open potion shop
+      if (currentRoom === 'bar') {
+        const n = barMaidenHitbox;
+        if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+          activeMenu = 'barShop';
+          shopSelected = 0;
+          shopToast = 'Bar maiden: "Need a heal draught, love?"';
+          shopToastTimer = 120;
+          return;
+        }
+      }
+
+      // Garage rogues — short banter
+      if (currentRoom === 'parkingGarageLevel3') {
+        const n = rogueL3Hitbox;
+        if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+          shopToast = 'Rogue: "Keep your voice down… this floor\'s watched."';
+          shopToastTimer = 180;
+          return;
+        }
+      }
+      if (currentRoom === 'parkingGarageLevel4') {
+        const n = rogueL4Hitbox;
+        if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+          shopToast = 'Rogue: "Roof access is past the arch. Don\'t make a scene."';
+          shopToastTimer = 180;
           return;
         }
       }
@@ -1020,36 +1658,110 @@
         }
       }
 
-      // Combat menu (attack / defend) — blocked while anim plays
-      if (currentRoom === 'warehouseBattle' && combat.active && !combat.won && !combat.anim) {
+      // After forest win/loss — center LEAVE / FLEE panel
+      if (combat.active && combat.mode === 'forest' && (combat.won || combat.lost)) {
+        const pw = 280, ph = 110;
+        const px = (canvas.width - pw) / 2;
+        const py = 160;
+        const leaveFight = function () {
+          if (combat.lost) {
+            // Flee back to the van roof so you aren't stuck re-rolling forest ambushes
+            changeRoom('garageTopFloor', 280, 300);
+          } else {
+            const dest = combat.returnRoom || 'forestEntrance';
+            const sx = combat.returnSpawnX != null ? combat.returnSpawnX : 300;
+            const sy = combat.returnSpawnY != null ? combat.returnSpawnY : 300;
+            changeRoom(dest, sx, sy);
+          }
+        };
+        // Center button area
+        if (mx >= px + 40 && mx <= px + pw - 40 && my >= py + 62 && my <= py + 98) {
+          leaveFight();
+          return;
+        }
+        // Whole panel clickable too
+        if (mx >= px && mx <= px + pw && my >= py && my <= py + ph) {
+          leaveFight();
+          return;
+        }
+        return;
+      }
+
+      // Stats button (top-left chip) — toggle stats menu outside combat
+      // During combat stats are always shown; chip still toggles expanded detail
+      if (mx >= 8 && mx <= 78 && my >= 8 && my <= 32) {
+        statsMenuOpen = !statsMenuOpen;
+        return;
+      }
+      // Close expanded stats by clicking outside panel (when not in combat)
+      if (statsMenuOpen && !combat.active) {
+        if (mx < 8 || mx > 200 || my < 8 || my > 230) {
+          // allow other clicks; don't force close on every miss — only if they click the chip again
+        }
+      }
+
+      // Combat menu (attack / defend / heal) — warehouse + forest
+      if (combat.active && !combat.won && !combat.lost && !combat.anim && activeMenu === 'combat') {
+        // Click forest enemies to select target
+        if (combat.mode === 'forest') {
+          for (let i = 0; i < combat.enemies.length; i++) {
+            const e = combat.enemies[i];
+            if (e.hp <= 0) continue;
+            // Approximate sprite hitbox above feet
+            const hx = e.feetX - 40, hy = e.feetY - 160, hw = 80, hh = 160;
+            if (mx >= hx && mx <= hx + hw && my >= hy && my <= hy + hh) {
+              combat.targetIndex = i;
+              combat.log = 'Targeting ' + e.name + '.';
+              return;
+            }
+          }
+        }
+        // HEAL button (needs potion in inventory)
+        if (mx >= 20 && mx <= 140 && my >= 400 && my <= 450) {
+          combatHeal();
+          return;
+        }
         // Attack button
-        if (mx >= 160 && mx <= 300 && my >= 400 && my <= 450) {
+        if (mx >= 155 && mx <= 295 && my >= 400 && my <= 450) {
           combatAttack();
           return;
         }
         // Defend button
-        if (mx >= 340 && mx <= 480 && my >= 400 && my <= 450) {
+        if (mx >= 310 && mx <= 450 && my >= 400 && my <= 450) {
           combatDefend();
           return;
         }
+        return; // swallow other clicks during combat
       }
 
-      // Normal door clicks
-      for (const d of rooms[currentRoom].doors) {
-        if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
-          changeRoom(d.target, d.spawnX, d.spawnY);
-          return;
+      // Normal door clicks (blocked mid-fight until win/loss)
+      if (!(combat.active && !combat.won && !combat.lost)) {
+        for (const d of rooms[currentRoom].doors) {
+          if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h) {
+            // Flee from forest skirmish always returns to the van roof
+            if (currentRoom === 'forestBattle' && combat.lost) {
+              changeRoom('garageTopFloor', 280, 300);
+              return;
+            }
+            changeRoom(d.target, d.spawnX, d.spawnY);
+            return;
+          }
         }
       }
 
-      // No free walking while combat menu is up
-      if (activeMenu === 'combat' && combat.active && !combat.won) return;
+      // No free walking while combat is up (including win/loss until Continue)
+      if (activeMenu === 'combat' && combat.active) return;
 
       // Walk to clicked position (keep feet in walkable band)
       const aw = frameW * ani.scale;
       const ah = frameH * ani.scale;
       ani.targetX = Math.min(Math.max(mx - aw / 2, -aw * 0.2), canvas.width - aw * 0.3);
       ani.targetY = Math.min(Math.max(my - ah * 0.75, 40), canvas.height - ah * 0.85);
+
+      // Dangerous forest: roll encounter again on each walk-click
+      if (FOREST_ENCOUNTER_ROOMS[currentRoom] && !combat.active && !activeMenu) {
+        tryForestEncounter(currentRoom);
+      }
     });
 
     function update() {
@@ -1071,16 +1783,28 @@
       // Freeze free walking during map/shop menus
       if (activeMenu && activeMenu !== 'combat') return;
       // During combat, park both girls just above the speech/combat bar (y≈370)
-      if (activeMenu === 'combat' && combat.active && !combat.won) {
-        // Feet sit on the floor strip above the menu; left half of screen
-        const combatFeetY = 368;
+      // Hold combat layout while in a fight (including win/loss until you leave)
+      if (activeMenu === 'combat' && combat.active) {
         const aniDrawH = frameH * ani.scale * 0.95;
         const nekoDrawH = nekoFrameH * neko.scale * 0.95;
-        // targetX/Y is top-left of walk sprite — convert from desired feet pos
-        ani.targetX = 200 - (frameW * ani.scale * 0.95) / 2;
-        ani.targetY = combatFeetY - aniDrawH;
-        neko.targetX = 95 - (nekoFrameW * neko.scale * 0.95) / 2;
-        neko.targetY = combatFeetY - nekoDrawH;
+        if (combat.mode === 'forest' && combat.partyFeet) {
+          // Hold laid-out arena positions (even spacing with enemies)
+          const af = combat.partyFeet.ani;
+          const nf = combat.partyFeet.neko;
+          ani.targetX = af.x - (frameW * ani.scale * 0.95) / 2;
+          ani.targetY = af.y - aniDrawH;
+          neko.targetX = nf.x - (nekoFrameW * neko.scale * 0.95) / 2;
+          neko.targetY = nf.y - nekoDrawH;
+          ani.facing = 1;
+          neko.facing = 1;
+        } else if (!combat.won && !combat.lost) {
+          // Warehouse training: left side above menu
+          const combatFeetY = 368;
+          ani.targetX = 175 - (frameW * ani.scale * 0.95) / 2;
+          ani.targetY = combatFeetY - aniDrawH;
+          neko.targetX = 55 - (nekoFrameW * neko.scale * 0.95) / 2;
+          neko.targetY = combatFeetY - nekoDrawH;
+        }
         if (!combat.anim) {
           ani.frame = IDLE_FRAME;
           neko.frame = NEKO_IDLE;
@@ -1165,8 +1889,60 @@
       ctx.textAlign = 'left';
     }
 
+    // Crop source rects on the 1×2 prop sheet (left bike+GARAGE, right bench+MAIN STREET)
+    function streetPropSource(which) {
+      if (!streetPropsArt.complete || !streetPropsArt.naturalWidth) return null;
+      const iw = streetPropsArt.naturalWidth;
+      const ih = streetPropsArt.naturalHeight;
+      if (which === 'bike') {
+        return {
+          sx: Math.floor(iw * 0.02),
+          sy: Math.floor(ih * 0.12),
+          sw: Math.floor(iw * 0.48),
+          sh: Math.floor(ih * 0.70)
+        };
+      }
+      return {
+        sx: Math.floor(iw * 0.50),
+        sy: Math.floor(ih * 0.12),
+        sw: Math.floor(iw * 0.48),
+        sh: Math.floor(ih * 0.74)
+      };
+    }
+
+    // Draw prop art into a box (contain, bottom-aligned).
+    // Direct drawImage only — no getImageData (that throws under file:// and was
+    // aborting the whole frame, which made characters vanish on street scenes).
+    function drawStreetPropArt(which, x, y, w, h) {
+      try {
+        const src = streetPropSource(which);
+        if (!src || src.sw < 8 || src.sh < 8) return false;
+        const ir = src.sw / src.sh;
+        const tr = w / h;
+        let dw, dh;
+        if (ir > tr) {
+          dw = w;
+          dh = w / ir;
+        } else {
+          dh = h;
+          dw = h * ir;
+        }
+        const dx = x + (w - dw) / 2;
+        const dy = y + (h - dh);
+        ctx.drawImage(
+          streetPropsArt,
+          src.sx, src.sy, src.sw, src.sh,
+          dx, dy, dw, dh
+        );
+        return true;
+      } catch (err) {
+        console.warn('Street prop draw failed:', err && err.message);
+        return false;
+      }
+    }
+
     // Sign + glowing zone drawn ON the door hitbox so the click target is obvious
-    // prop: null | 'bike' | 'bench' — fills the lower part of the hitbox
+    // prop: null | 'bike' | 'bench' — sheet art includes its own sign when available
     function drawTravelMarker(x, y, w, h, text, prop) {
       // Soft gold pad over the whole clickable area
       ctx.fillStyle = 'rgba(232, 201, 74, 0.14)';
@@ -1177,13 +1953,23 @@
       ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
       ctx.setLineDash([]);
 
-      // Sign centered near top of the hotspot
-      const signW = 90;
+      // Prefer sheet art (already has GARAGE / MAIN STREET sign)
+      if (prop === 'bike' || prop === 'bench') {
+        let drawn = false;
+        try {
+          drawn = drawStreetPropArt(prop, x + 2, y + 2, w - 4, h - 4);
+        } catch (e) {
+          drawn = false;
+        }
+        if (drawn) return;
+      }
+
+      // Fallback: procedural sign + prop (always works)
+      const signW = Math.min(90, w - 4);
       const sx = Math.floor(x + (w - signW) / 2);
       const sy = Math.floor(y + 8);
       drawStreetSign(sx, sy, text);
 
-      // Prop fills the bottom of the hitbox (makes the exit feel solid / clickable)
       const groundY = y + h - 6;
       if (prop === 'bike') {
         drawBike(x + Math.floor((w - 62) / 2), groundY);
@@ -1192,7 +1978,7 @@
       }
     }
 
-    // Street bike — sits under the GARAGE sign, fills the exit hitbox
+    // Street bike — procedural fallback if prop sheet not loaded
     function drawBike(x, groundY) {
       // soft shadow
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
@@ -1242,7 +2028,7 @@
       ctx.stroke();
     }
 
-    // Park bench — sits under the CITY sign, fills the exit hitbox
+    // Park bench — procedural fallback if prop sheet not loaded
     function drawParkBench(x, groundY, w) {
       const bw = Math.max(60, w);
       // shadow
@@ -1956,106 +2742,53 @@
     function drawForestEntrance() {
       const W = canvas.width, H = canvas.height;
 
-      // Sky through canopy
-      const sky = ctx.createLinearGradient(0, 0, 0, H);
-      sky.addColorStop(0, '#1a2a28');
-      sky.addColorStop(0.45, '#2a4a38');
-      sky.addColorStop(1, '#0e1a14');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, W, H);
-
-      // Soft fog
-      ctx.fillStyle = 'rgba(80,120,90,0.12)';
-      for (let i = 0; i < 6; i++) {
+      // Concept art: glowing crossroads + trail map board
+      const drawn = drawImageCover(forestEntranceArt, 0, 0, W, H, 0.45, 0.55);
+      if (!drawn) {
+        // Procedural fallback
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, '#1a2a28');
+        sky.addColorStop(0.45, '#2a4a38');
+        sky.addColorStop(1, '#0e1a14');
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#3a3020';
         ctx.beginPath();
-        ctx.ellipse(80 + i * 100, 200 + (i % 3) * 40, 90, 30, 0, 0, Math.PI * 2);
+        ctx.ellipse(W / 2, H * 0.72, 220, 70, 0, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Ground path hub
-      ctx.fillStyle = '#3a3020';
-      ctx.beginPath();
-      ctx.ellipse(W / 2, H * 0.72, 220, 70, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#4a3a28';
-      ctx.beginPath();
-      ctx.ellipse(W / 2, H * 0.72, 160, 40, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Trees framing the crossroads
-      function tree(x, baseY, h) {
-        ctx.fillStyle = '#2a1a10';
-        ctx.fillRect(x - 8, baseY - h * 0.35, 16, h * 0.35);
-        ctx.fillStyle = '#1a3a28';
-        ctx.beginPath();
-        ctx.moveTo(x, baseY - h);
-        ctx.lineTo(x + h * 0.28, baseY - h * 0.35);
-        ctx.lineTo(x - h * 0.28, baseY - h * 0.35);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = '#245038';
-        ctx.beginPath();
-        ctx.moveTo(x, baseY - h * 0.85);
-        ctx.lineTo(x + h * 0.22, baseY - h * 0.4);
-        ctx.lineTo(x - h * 0.22, baseY - h * 0.4);
-        ctx.closePath();
-        ctx.fill();
-      }
-      tree(50, H * 0.75, 220);
-      tree(110, H * 0.78, 180);
-      tree(590, H * 0.75, 230);
-      tree(530, H * 0.78, 190);
-      tree(200, H * 0.55, 160);
-      tree(440, H * 0.52, 170);
-
-      // Firefly dots
-      ctx.fillStyle = 'rgba(180,255,140,0.55)';
-      for (let i = 0; i < 18; i++) {
-        const fx = 40 + ((i * 97) % 560);
-        const fy = 40 + ((i * 53) % 280);
-        ctx.beginPath();
-        ctx.arc(fx, fy, 2 + (i % 3), 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Title
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(W / 2 - 150, 12, 300, 36);
+      // Title (over art)
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(W / 2 - 160, 10, 320, 34);
       ctx.fillStyle = '#9dffc0';
-      ctx.font = 'bold 16px Courier New';
+      ctx.font = 'bold 15px Courier New';
       ctx.textAlign = 'center';
-      ctx.fillText('Whispering Forest Crossroads', W / 2, 36);
+      ctx.fillText('Whispering Forest Crossroads', W / 2, 32);
 
-      // 5 path mouths (match door hitboxes)
+      // 5 path mouths (match door hitboxes) — light overlays so art shows through
       const paths = [
-        { x: 40, y: 120, label: 'Moss Trail', color: '#3a6a48' },
-        { x: 160, y: 90, label: 'Firefly Creek', color: '#2a5a6a' },
-        { x: 280, y: 70, label: 'Ancient Grove', color: '#4a5a30' },
-        { x: 400, y: 90, label: 'Mushroom Hollow', color: '#5a4a6a' },
-        { x: 520, y: 120, label: 'Deep Thicket', color: '#1a3a28' }
+        { x: 40, y: 120, label: 'Moss Trail' },
+        { x: 160, y: 90, label: 'Open Grassland' },
+        { x: 280, y: 70, label: 'Kitsune Temple' },
+        { x: 400, y: 90, label: 'Mushroom Hollow' },
+        { x: 520, y: 120, label: 'Deep Thicket' }
       ];
       for (let i = 0; i < paths.length; i++) {
         const p = paths[i];
-        // path corridor into trees
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.moveTo(p.x + 10, p.y + 80);
-        ctx.lineTo(p.x + 40, p.y);
-        ctx.lineTo(p.x + 60, p.y);
-        ctx.lineTo(p.x + 90, p.y + 80);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(125,255,176,0.75)';
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.fillRect(p.x, p.y, 100, 80);
+        ctx.strokeStyle = 'rgba(125,255,176,0.85)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 4]);
         ctx.strokeRect(p.x, p.y, 100, 80);
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.fillRect(p.x + 6, p.y + 8, 88, 28);
-        ctx.fillStyle = '#cfe';
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(p.x + 6, p.y + 8, 88, 42);
+        ctx.fillStyle = '#e8ffe8';
         ctx.font = 'bold 11px Courier New';
-        ctx.fillText(p.label, p.x + 50, p.y + 22);
-        ctx.fillStyle = 'rgba(232,201,74,0.8)';
+        ctx.fillText(p.label, p.x + 50, p.y + 26);
+        ctx.fillStyle = 'rgba(232,201,74,0.9)';
         ctx.font = '10px Courier New';
         ctx.fillText('enter →', p.x + 50, p.y + 42);
       }
@@ -2127,6 +2860,327 @@
       ctx.fillStyle = '#7dffb0';
       ctx.font = 'bold 12px Courier New';
       ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    // Moss Trail — woodland cabin exterior art
+    function drawMossTrailCabin() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#0e1a14';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(mossCabinExtArt, 0, 0, W, H, 0.52, 0.55);
+      if (!drawn) {
+        if (typeof ForestCabinScene !== 'undefined' && ForestCabinScene.draw) {
+          ForestCabinScene.draw(ctx, canvas);
+        } else {
+          drawForestPath(0);
+        }
+      }
+      // Cabin porch door highlight
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(330, 200, 80, 110);
+      ctx.strokeStyle = 'rgba(232,201,74,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(330, 200, 80, 110);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(332, 204, 76, 22);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('enter cabin', 370, 219);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    // Open grassland / trail — continues to road fork
+    function drawOpenGrassland() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#1a2a20';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(grasslandTrailArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        if (typeof GrasslandScene !== 'undefined' && GrasslandScene.draw) {
+          GrasslandScene.draw(ctx, canvas, { title: 'Open Grassland' });
+        } else {
+          ctx.fillStyle = '#7eb6e8';
+          ctx.fillRect(0, 0, W, H * 0.55);
+          ctx.fillStyle = '#5aa848';
+          ctx.fillRect(0, H * 0.52, W, H * 0.48);
+          ctx.fillStyle = '#9a7a50';
+          ctx.beginPath();
+          ctx.moveTo(W / 2 - 55, H);
+          ctx.lineTo(W / 2 - 18, H * 0.52);
+          ctx.lineTo(W / 2 + 18, H * 0.52);
+          ctx.lineTo(W / 2 + 55, H);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 90, 10, 180, 28);
+      ctx.fillStyle = '#e8f5c8';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Open Grassland', W / 2, 30);
+      // Forward path pad along the dirt trail
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(250, 80, 140, 100);
+      ctx.strokeStyle = 'rgba(232,201,74,0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(253, 83, 134, 94);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('Trail continues →', 320, 125);
+      ctx.fillText('Road Fork', 320, 145);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    // Ancient Grove — Kitsune Temple
+    function drawAncientGroveCabin() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#0a1210';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(kitsuneTempleArt, 0, 0, W, H, 0.48, 0.52);
+      if (!drawn) {
+        if (typeof drawCabinClearing === 'function') {
+          drawCabinClearing(ctx);
+        } else if (typeof ForestCabinScenes !== 'undefined' && ForestCabinScenes.drawCabinClearing) {
+          ForestCabinScenes.drawCabinClearing(ctx);
+        } else if (typeof ForestCabinScene !== 'undefined' && ForestCabinScene.draw) {
+          ForestCabinScene.draw(ctx, canvas);
+        } else {
+          drawForestPath(2);
+        }
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(W / 2 - 150, 10, 300, 28);
+      ctx.fillStyle = '#ffd080';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Ancient Grove — Kitsune Temple', W / 2, 30);
+      ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    // Mushroom Hollow (your "mushroom grove" art)
+    function drawMushroomHollow() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#1a1030';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(mushroomHollowArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn) {
+        if (typeof GrasslandScene !== 'undefined' && GrasslandScene.draw) {
+          GrasslandScene.draw(ctx, canvas, {
+            title: 'Mushroom Hollow',
+            skyTop: '#6a5a90',
+            skyMid: '#a890c8',
+            skyBot: '#c8b8d8',
+            grassTop: '#4a6a48',
+            grassMid: '#3a5a40',
+            grassBot: '#2a4a34',
+            mushrooms: true
+          });
+        } else {
+          drawForestPath(3);
+        }
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 100, 10, 200, 28);
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Mushroom Hollow', W / 2, 30);
+      // Path continues to giant mushroom pond
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(250, 80, 140, 100);
+      ctx.strokeStyle = 'rgba(200,140,255,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(253, 83, 134, 94);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('Trail continues →', 320, 125);
+      ctx.fillText('Giant Pond', 320, 145);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    function drawWithBranch(fnName, backLabel) {
+      if (typeof ForestBranches !== 'undefined' && ForestBranches[fnName]) {
+        ForestBranches[fnName](ctx, canvas);
+      }
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText(backLabel || '◄ Back', 18, 358);
+    }
+
+    function drawDeepThicketScene() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#0a140c';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(deepThicketArt, 0, 0, W, H, 0.55, 0.55);
+      if (!drawn) {
+        if (typeof ForestBranches !== 'undefined' && ForestBranches.drawDeepThicket) {
+          ForestBranches.drawDeepThicket(ctx, canvas);
+        } else {
+          drawForestPath(4);
+        }
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 90, 10, 180, 28);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Deep Thicket', W / 2, 30);
+      // Cave mouth pad (right side of art)
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(420, 140, 150, 160);
+      ctx.strokeStyle = 'rgba(125,255,176,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(420, 140, 150, 160);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(430, 150, 130, 36);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('Cave →', 495, 166);
+      ctx.fillStyle = 'rgba(232,201,74,0.9)';
+      ctx.font = '10px Courier New';
+      ctx.fillText('enter', 495, 180);
+      ctx.textAlign = 'left';
+
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Crossroads', 18, 358);
+    }
+
+    function drawForestCaveScene() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#12100e';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(forestCaveArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn && typeof ForestBranches !== 'undefined' && ForestBranches.drawForestCave) {
+        ForestBranches.drawForestCave(ctx, canvas);
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(W / 2 - 100, 10, 200, 28);
+      ctx.fillStyle = '#c0b8a8';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Forest Cave', W / 2, 30);
+      ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Thicket', 18, 358);
+    }
+
+    function drawMushroomPondScene() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#1a1830';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(mushroomPondArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn && typeof ForestBranches !== 'undefined' && ForestBranches.drawMushroomPond) {
+        ForestBranches.drawMushroomPond(ctx, canvas);
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 120, 10, 240, 28);
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Giant Mushroom Pond', W / 2, 30);
+      ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#e0c0ff';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Hollow', 18, 358);
+    }
+
+    function drawRoadForkScene() {
+      if (typeof ForestBranches !== 'undefined' && ForestBranches.drawRoadFork) {
+        ForestBranches.drawRoadFork(ctx, canvas);
+      }
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Grassland', 18, 358);
+    }
+
+    function drawForestCampScene() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#0e1a18';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(forestCampArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn && typeof ForestBranches !== 'undefined' && ForestBranches.drawForestCamp) {
+        ForestBranches.drawForestCamp(ctx, canvas);
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 90, 10, 180, 28);
+      ctx.fillStyle = '#c8e0a0';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Wooded Camp', W / 2, 30);
+      ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Fork', 18, 358);
+    }
+
+    function drawBanditFortScene() {
+      drawWithBranch('drawBanditFort', '◄ Fork');
+    }
+
+    function drawCabinInteriorScene() {
+      const W = canvas.width, H = canvas.height;
+      ctx.fillStyle = '#1a1410';
+      ctx.fillRect(0, 0, W, H);
+      const drawn = drawImageCover(mossCabinIntArt, 0, 0, W, H, 0.5, 0.55);
+      if (!drawn && typeof ForestBranches !== 'undefined' && ForestBranches.drawCabinInterior) {
+        ForestBranches.drawCabinInterior(ctx, canvas);
+      }
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(W / 2 - 120, 10, 240, 28);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Moss Cabin — Interior', W / 2, 30);
+      ctx.textAlign = 'left';
+      drawForestExitPad();
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Outside', 18, 358);
     }
 
     function drawDreamcore() {
@@ -2278,6 +3332,10 @@
     function drawCity() {
       const W = canvas.width, H = canvas.height;
 
+      // Always paint a base so the room never stays empty if art fails mid-frame
+      ctx.fillStyle = '#2a2a3e';
+      ctx.fillRect(0, 0, W, H);
+
       // Arcane street art as full background (sky + wall + sidewalk + road)
       // focusY ~0.5 keeps sidewalk band under the storefronts
       const drawn = drawImageCover(streetRoadArt, 0, 0, W, H, 0.5, 0.5);
@@ -2327,8 +3385,12 @@
       drawClothingStore(300, sidewalkY, 145, shopH * 0.95);
       drawBarShop(455, sidewalkY, 90, shopH * 0.95);
 
-      // Garage exit sits on the right sidewalk / road edge
-      drawTravelMarker(555, sidewalkY - 100, 85, 115, 'GARAGE →', 'bike');
+      // Garage exit sits on the right sidewalk / road edge (bike + GARAGE sign sheet)
+      try {
+        drawTravelMarker(540, 160, 100, 140, 'GARAGE →', 'bike');
+      } catch (e) {
+        drawGaragePad(540, 160, 100, 140, 'GARAGE →');
+      }
     }
 
     // Soft green exit pad helper for garage floors
@@ -2347,6 +3409,11 @@
 
     function drawGarageStreet() {
       const W = canvas.width, H = canvas.height;
+
+      // Always paint a base so the room never stays empty if art fails mid-frame
+      ctx.fillStyle = '#3a4558';
+      ctx.fillRect(0, 0, W, H);
+
       // Arcane approach road — full background
       const drawn = drawImageCover(garageStreetArt, 0, 0, W, H, 0.55, 0.55);
       if (!drawn) {
@@ -2356,8 +3423,13 @@
         drawParkingGarage(380, groundY, 240, H * 0.40);
       }
 
-      // Exit pads on top of the art
-      drawTravelMarker(10, 300, 100, 130, '← CITY', 'bench');
+      // Exit pads on top of the art (bench + MAIN STREET sign sheet)
+      try {
+        drawTravelMarker(8, 280, 120, 150, '← CITY', 'bench');
+      } catch (e) {
+        // Hard fallback if prop path explodes
+        drawGaragePad(8, 280, 120, 150, '← CITY');
+      }
       drawGaragePad(380, 180, 200, 180, 'Garage ►');
 
       // Clickable door on abandoned building (left)
@@ -2389,69 +3461,27 @@
     function drawWarehouseBase(battleMode) {
       const W = canvas.width, H = canvas.height;
 
-      // Dim industrial interior
-      const wall = ctx.createLinearGradient(0, 0, 0, H * 0.7);
-      wall.addColorStop(0, '#3a3834');
-      wall.addColorStop(1, '#2a2824');
-      ctx.fillStyle = wall;
-      ctx.fillRect(0, 0, W, H * 0.72);
-
-      // Corrugated wall lines
-      ctx.strokeStyle = 'rgba(20,20,18,0.35)';
-      ctx.lineWidth = 2;
-      for (let x = 20; x < W; x += 28) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H * 0.72);
-        ctx.stroke();
+      // Concept art: abandoned warehouse with glowing runic training dummy
+      const drawn = drawImageCover(warehouseArt, 0, 0, W, H, 0.5, 0.52);
+      if (!drawn) {
+        // Dim industrial fallback
+        const wall = ctx.createLinearGradient(0, 0, 0, H * 0.7);
+        wall.addColorStop(0, '#3a3834');
+        wall.addColorStop(1, '#2a2824');
+        ctx.fillStyle = wall;
+        ctx.fillRect(0, 0, W, H * 0.72);
+        ctx.fillStyle = '#4a4840';
+        ctx.fillRect(0, H * 0.72, W, H * 0.28);
+        drawTrainingDummy(400, H * 0.72);
+        drawTrainingDummy(500, H * 0.72);
+        drawTrainingDummy(550, H * 0.68);
       }
 
-      // High windows
-      for (let i = 0; i < 4; i++) {
-        const wx = 60 + i * 140;
-        ctx.fillStyle = battleMode ? 'rgba(180, 60, 40, 0.25)' : 'rgba(120, 140, 100, 0.2)';
-        ctx.fillRect(wx, 30, 70, 40);
-        ctx.strokeStyle = '#1a1a16';
-        ctx.strokeRect(wx, 30, 70, 40);
-        ctx.beginPath();
-        ctx.moveTo(wx + 35, 30);
-        ctx.lineTo(wx + 35, 70);
-        ctx.moveTo(wx, 50);
-        ctx.lineTo(wx + 70, 50);
-        ctx.stroke();
+      // Battle tint (red mood over art)
+      if (battleMode) {
+        ctx.fillStyle = 'rgba(120, 30, 20, 0.18)';
+        ctx.fillRect(0, 0, W, H);
       }
-
-      // Floor
-      ctx.fillStyle = '#4a4840';
-      ctx.fillRect(0, H * 0.72, W, H * 0.28);
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-      for (let y = H * 0.72; y < H; y += 22) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
-        ctx.stroke();
-      }
-
-      // Support pillars
-      ctx.fillStyle = '#5a5548';
-      ctx.fillRect(160, 80, 22, H * 0.72 - 80);
-      ctx.fillRect(460, 80, 22, H * 0.72 - 80);
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.fillRect(160, 80, 6, H * 0.72 - 80);
-      ctx.fillRect(460, 80, 6, H * 0.72 - 80);
-
-      // Crates along left wall
-      ctx.fillStyle = '#6b5340';
-      ctx.fillRect(40, H * 0.55, 50, 50);
-      ctx.fillRect(55, H * 0.48, 45, 40);
-      ctx.fillStyle = '#5a4434';
-      ctx.fillRect(40, H * 0.55, 50, 8);
-      ctx.fillRect(55, H * 0.48, 45, 8);
-
-      // Attack dummies at the far end (right)
-      drawTrainingDummy(400, H * 0.72);
-      drawTrainingDummy(500, H * 0.72);
-      drawTrainingDummy(550, H * 0.68);
 
       // Exit
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -2509,42 +3539,31 @@
     function drawWarehouse() {
       drawWarehouseBase(false);
 
-      // Clickable training box at the end by the dummies
+      // Clickable training zone over the glowing dummy in the art
       const b = trainingBoxHitbox;
-      ctx.fillStyle = '#6b4a28';
+      ctx.fillStyle = 'rgba(232, 201, 74, 0.12)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.fillStyle = '#8a6238';
-      ctx.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
       ctx.strokeStyle = 'rgba(232, 201, 74, 0.9)';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 4]);
       ctx.strokeRect(b.x, b.y, b.w, b.h);
       ctx.setLineDash([]);
-      // rope / lid lines
-      ctx.strokeStyle = '#3a2a18';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(b.x + 10, b.y + 30);
-      ctx.lineTo(b.x + b.w - 10, b.y + 30);
-      ctx.moveTo(b.x + 10, b.y + 55);
-      ctx.lineTo(b.x + b.w - 10, b.y + 55);
-      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(b.x + 20, b.y + 8, b.w - 40, 36);
       ctx.fillStyle = '#e8c94a';
       ctx.font = 'bold 12px Courier New';
       ctx.textAlign = 'center';
-      ctx.fillText('TRAINING', b.x + b.w / 2, b.y + 22);
+      ctx.fillText('TRAINING', b.x + b.w / 2, b.y + 24);
       ctx.font = '11px Courier New';
-      ctx.fillText('click box', b.x + b.w / 2, b.y + b.h - 12);
+      ctx.fillText('click dummy', b.x + b.w / 2, b.y + 38);
       ctx.textAlign = 'left';
     }
 
     function drawWarehouseBattle() {
       drawWarehouseBase(true);
 
-      // Focus dummy (slightly larger, center)
-      drawTrainingDummy(480, canvas.height * 0.72);
-      // HP bar over dummy
-      const barX = 420, barY = 160, barW = 120, barH = 14;
+      // HP bar over the art dummy (center-back)
+      const barX = 260, barY = 140, barW = 120, barH = 14;
       ctx.fillStyle = '#1a1a1a';
       ctx.fillRect(barX, barY, barW, barH);
       const pct = combat.dummyMaxHp > 0 ? combat.dummyHp / combat.dummyMaxHp : 0;
@@ -2561,6 +3580,152 @@
 
       // Combat menu bar
       drawCombatMenu();
+    }
+
+    function drawEnemyHpBar(e, barX, barY, barW) {
+      const barH = 12;
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(barX, barY, barW, barH);
+      const pct = e.maxHp > 0 ? e.hp / e.maxHp : 0;
+      ctx.fillStyle = pct > 0.35 ? '#c44' : '#f33';
+      ctx.fillRect(barX + 1, barY + 1, (barW - 2) * pct, barH - 2);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#eee';
+      ctx.font = '10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(e.name + ' ' + e.hp + '/' + e.maxHp, barX + barW / 2, barY - 4);
+      ctx.textAlign = 'left';
+    }
+
+    // Minimal grass arena background for forest fights
+    function drawForestBattleScene() {
+      const W = canvas.width, H = canvas.height;
+
+      // Soft sky — mostly empty
+      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.62);
+      sky.addColorStop(0, '#8ec8f0');
+      sky.addColorStop(1, '#c8e0b0');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H * 0.62);
+
+      // Small grass layer (mid strip only — not a full busy scene)
+      const grassTop = H * 0.58;
+      const grass = ctx.createLinearGradient(0, grassTop, 0, H);
+      grass.addColorStop(0, '#6db84a');
+      grass.addColorStop(0.45, '#4a9a38');
+      grass.addColorStop(1, '#2f6a28');
+      ctx.fillStyle = grass;
+      ctx.fillRect(0, grassTop, W, H - grassTop);
+
+      // Subtle grass blades (deterministic, sparse)
+      ctx.strokeStyle = 'rgba(30,90,30,0.35)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 40; i++) {
+        const gx = 12 + ((i * 97) % (W - 24));
+        const gy = grassTop + 18 + ((i * 53) % 70);
+        ctx.beginPath();
+        ctx.moveTo(gx, gy);
+        ctx.lineTo(gx + ((i % 3) - 1) * 3, gy - 10 - (i % 5));
+        ctx.stroke();
+      }
+
+      // Soft horizon shadow line
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fillRect(0, grassTop, W, 6);
+
+      // Title
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - 100, 10, 200, 28);
+      ctx.fillStyle = '#e8f5c8';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('Forest Skirmish', W / 2, 30);
+      ctx.textAlign = 'left';
+
+      // Exit pad only useful after win/loss (still drawn for hitbox match)
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(15, 360, 90, 90);
+      ctx.strokeStyle = 'rgba(125,255,176,0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(18, 363, 84, 84);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('◄ Continue', 20, 358);
+    }
+
+    // Draw one forest enemy from dedicated sheets: 0 male, 1 female, 2 hound
+    function drawCombatEnemy(artIndex, feetX, feetY, faceLeft) {
+      const idx = ((artIndex % 3) + 3) % 3;
+      const img = enemyArts[idx];
+      let sprite = null;
+      if (img && img.complete && img.naturalWidth) {
+        const iw = img.naturalWidth;
+        const ih = img.naturalHeight;
+        // Full single-figure portrait — light inset, black bg keyed
+        const sx = Math.floor(iw * 0.08);
+        const sy = Math.floor(ih * 0.04);
+        const sw = Math.floor(iw * 0.84);
+        const sh = Math.floor(ih * 0.92);
+        const key = 'enemy_art_v1_' + idx;
+        sprite = getKeyedSprite(key, img, sx, sy, sw, sh);
+        if (!sprite) {
+          const c = document.createElement('canvas');
+          c.width = sw; c.height = sh;
+          c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+          sprite = c;
+          npcSpriteCache[key] = c;
+        }
+      }
+      if (!sprite) {
+        ctx.fillStyle = '#5a3a4a';
+        ctx.fillRect(feetX - 22, feetY - 120, 44, 120);
+        return { dw: 44, dh: 120, dy: feetY - 120 };
+      }
+      // Match party combat scale
+      const fit = fitSpriteSize(sprite.width, sprite.height, 100, 170);
+      const dw = fit.dw, dh = fit.dh;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (faceLeft) {
+        ctx.save();
+        ctx.translate(feetX, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(sprite, -dw / 2, dy, dw, dh);
+        ctx.restore();
+      } else {
+        ctx.drawImage(sprite, dx, dy, dw, dh);
+      }
+      return { dw: dw, dh: dh, dy: dy };
+    }
+
+    // Forest enemies on the grass arena with HP bars
+    function drawForestEnemies() {
+      if (combat.mode !== 'forest' || !combat.enemies.length) return;
+      for (let i = 0; i < combat.enemies.length; i++) {
+        const e = combat.enemies[i];
+        if (e.hp <= 0) continue;
+        const artIdx = e.artIndex != null ? e.artIndex : i % 3;
+        const box = drawCombatEnemy(artIdx, e.feetX, e.feetY, true);
+        const barW = 80;
+        const barY = (box.dy != null ? box.dy : e.feetY - 150) - 16;
+        drawEnemyHpBar(e, e.feetX - barW / 2, barY, barW);
+        if (i === combat.targetIndex) {
+          ctx.strokeStyle = 'rgba(232,201,74,0.95)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 3]);
+          const hh = box.dh || 150;
+          ctx.strokeRect(e.feetX - 40, e.feetY - hh - 4, 80, hh + 8);
+          ctx.setLineDash([]);
+        }
+      }
     }
 
     function drawCombatMenu() {
@@ -2581,16 +3746,64 @@
       ctx.font = 'bold 14px Courier New';
       ctx.fillText(turnName + "'S TURN", 20, 392);
 
+      // Forest: show target + enemy atk/def
+      if (combat.mode === 'forest' && combat.enemies.length) {
+        ensureValidTarget();
+        if (combat.targetIndex >= 0) {
+          const e = combat.enemies[combat.targetIndex];
+          ctx.fillStyle = '#e8c94a';
+          ctx.font = '11px Courier New';
+          ctx.fillText('Target: ' + e.name + '  ATK ' + e.atk + ' DEF ' + e.def, 160, 392);
+        }
+      }
+
       ctx.fillStyle = '#ccc';
       ctx.font = '12px Courier New';
       // wrap log roughly
       ctx.fillText(combat.log.slice(0, 70), 20, 412);
       if (combat.log.length > 70) ctx.fillText(combat.log.slice(70, 140), 20, 428);
 
-      if (combat.won) {
-        ctx.fillStyle = '#7dffb0';
-        ctx.font = 'bold 16px Courier New';
-        ctx.fillText('Training complete! Leave via ◄ Street.', 160, 440);
+      if (combat.won || combat.lost) {
+        // Center leave-fight panel (not tucked in a corner)
+        if (combat.mode === 'forest') {
+          const pw = 280, ph = 110;
+          const px = (canvas.width - pw) / 2;
+          const py = 160;
+          ctx.fillStyle = 'rgba(10,10,16,0.92)';
+          ctx.fillRect(px, py, pw, ph);
+          ctx.strokeStyle = combat.won ? '#7dffb0' : '#e88';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(px, py, pw, ph);
+          ctx.fillStyle = combat.won ? '#7dffb0' : '#f88';
+          ctx.font = 'bold 18px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillText(combat.won ? 'VICTORY!' : 'DEFEATED…', canvas.width / 2, py + 32);
+          ctx.fillStyle = '#ccc';
+          ctx.font = '12px Courier New';
+          ctx.fillText(
+            combat.won
+              ? ('+' + (combat.enemies.length * 10) + 'g  ·  Lv ' + partyProgress.level)
+              : 'Warp back to the van',
+            canvas.width / 2, py + 52
+          );
+          // Big center button
+          ctx.fillStyle = combat.won ? '#2a5a3a' : '#5a2a2a';
+          ctx.fillRect(px + 40, py + 62, pw - 80, 36);
+          ctx.strokeStyle = combat.won ? '#9f8' : '#faa';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 40, py + 62, pw - 80, 36);
+          ctx.fillStyle = combat.won ? '#9f8' : '#faa';
+          ctx.font = 'bold 15px Courier New';
+          ctx.fillText(combat.won ? 'LEAVE FIGHT ►' : 'FLEE TO VAN ►', canvas.width / 2, py + 86);
+          ctx.textAlign = 'left';
+        } else {
+          ctx.fillStyle = combat.won ? '#7dffb0' : '#f88';
+          ctx.font = 'bold 14px Courier New';
+          ctx.fillText(
+            combat.won ? 'Training complete! Leave via ◄ Street.' : 'Defeated… leave via ◄ Street.',
+            20, 420
+          );
+        }
         return;
       }
 
@@ -2603,29 +3816,43 @@
         return;
       }
 
+      const potions = inventoryCount('potion');
+
+      // HEAL (potion)
+      ctx.fillStyle = potions > 0 ? '#2a4a2a' : '#2a2a2a';
+      ctx.fillRect(20, 400, 120, 50);
+      ctx.strokeStyle = potions > 0 ? '#6d8' : '#555';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(20, 400, 120, 50);
+      ctx.fillStyle = potions > 0 ? '#9f8' : '#666';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('HEAL', 80, 422);
+      ctx.font = '10px Courier New';
+      ctx.fillText(potions > 0 ? ('x' + potions + ' pot') : 'no pot', 80, 440);
+
       // Attack
       ctx.fillStyle = '#5a2a2a';
-      ctx.fillRect(160, 400, 140, 50);
+      ctx.fillRect(155, 400, 140, 50);
       ctx.strokeStyle = '#e88';
       ctx.lineWidth = 2;
-      ctx.strokeRect(160, 400, 140, 50);
+      ctx.strokeRect(155, 400, 140, 50);
       ctx.fillStyle = '#faa';
       ctx.font = 'bold 18px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText('ATTACK', 230, 432);
+      ctx.fillText('ATTACK', 225, 432);
 
       // Defend
       ctx.fillStyle = '#2a3a5a';
-      ctx.fillRect(340, 400, 140, 50);
+      ctx.fillRect(310, 400, 140, 50);
       ctx.strokeStyle = '#8af';
-      ctx.strokeRect(340, 400, 140, 50);
+      ctx.strokeRect(310, 400, 140, 50);
       ctx.fillStyle = '#acf';
-      ctx.fillText('DEFEND', 410, 432);
+      ctx.fillText('DEFEND', 380, 432);
       ctx.textAlign = 'left';
 
       ctx.fillStyle = '#888';
       ctx.font = '11px Courier New';
-      ctx.fillText('(Turns: Ani ↔ Neko)', 500, 392);
+      ctx.fillText('Ani ↔ Neko', 470, 392);
     }
 
     function drawParkingGarageInterior() {
@@ -2680,6 +3907,9 @@
         ctx.fillRect(0, 0, W, H);
       }
 
+      // Female rogue (sheet cell 0 — top-left)
+      drawGarageRogue(0, rogueL3Pos.feetX, rogueL3Pos.feetY, 'Rogue', rogueL3Hitbox);
+
       drawGaragePad(10, 340, 90, 100, '◄ Down');
       drawGaragePad(250, 120, 200, 240, 'Ramp ▲ L4');
     }
@@ -2694,6 +3924,9 @@
         ctx.fillStyle = '#4a4a42';
         ctx.fillRect(0, 0, W, H);
       }
+
+      // Second rogue pose (sheet cell 1 — top-right)
+      drawGarageRogue(1, rogueL4Pos.feetX, rogueL4Pos.feetY, 'Rogue', rogueL4Hitbox);
 
       drawGaragePad(10, 340, 90, 100, '◄ Down');
       drawGaragePad(250, 140, 200, 220, 'Arch ▲ Roof');
@@ -2726,6 +3959,139 @@
       ctx.fillStyle = '#7dffb0';
       ctx.font = 'bold 12px Courier New';
       ctx.fillText('◄ Street', 28, 358);
+    }
+
+    // Build a black-keyed (transparent bg) crop of an image. Safe under file://.
+    // Never throws — returns null on failure so callers can fall back.
+    function getKeyedSprite(cacheKey, img, sx, sy, sw, sh) {
+      if (npcSpriteCache[cacheKey]) return npcSpriteCache[cacheKey];
+      if (!img || !img.complete || !img.naturalWidth) return null;
+      if (sw < 4 || sh < 4) return null;
+      try {
+        const c = document.createElement('canvas');
+        c.width = sw;
+        c.height = sh;
+        const cctx = c.getContext('2d', { willReadFrequently: true });
+        cctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        try {
+          const id = cctx.getImageData(0, 0, sw, sh);
+          const d = id.data;
+          for (let i = 0; i < d.length; i += 4) {
+            // Pure / near-black sheet background only (leave dark clothing alone if not pure black)
+            if (d[i] < 14 && d[i + 1] < 14 && d[i + 2] < 14) d[i + 3] = 0;
+          }
+          cctx.putImageData(id, 0, 0);
+        } catch (e) {
+          // file:// may block getImageData — still use unkeyed crop
+        }
+        npcSpriteCache[cacheKey] = c;
+        return c;
+      } catch (err) {
+        console.warn('NPC sprite cache failed:', cacheKey, err && err.message);
+        npcSpriteCache[cacheKey] = null;
+        return null;
+      }
+    }
+
+    // Draw a sprite canvas at feet position, Ani-height scaled
+    function drawNpcSprite(sprite, feetX, feetY, label, labelColor, hitbox) {
+      const aniDrawH = frameH * ani.scale;
+      if (!sprite) {
+        const fw = 50, fh = aniDrawH;
+        if (hitbox) {
+          hitbox.x = feetX - fw / 2;
+          hitbox.y = feetY - fh;
+          hitbox.w = fw;
+          hitbox.h = fh;
+        }
+        ctx.fillStyle = 'rgba(40,30,25,0.75)';
+        ctx.fillRect(feetX - fw / 2, feetY - fh, fw, fh);
+        return;
+      }
+      const scale = aniDrawH / sprite.height;
+      const dw = sprite.width * scale;
+      const dh = sprite.height * scale;
+      const dx = feetX - dw / 2;
+      const dy = feetY - dh;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(feetX, feetY - 2, dw * 0.28, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.drawImage(sprite, dx, dy, dw, dh);
+
+      if (label) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.font = 'bold 11px Courier New';
+        const tw = ctx.measureText(label).width;
+        ctx.fillRect(feetX - tw / 2 - 6, dy - 22, tw + 12, 18);
+        ctx.fillStyle = labelColor || '#7dffb0';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, feetX, dy - 9);
+        ctx.textAlign = 'left';
+      }
+
+      if (hitbox) {
+        hitbox.x = dx;
+        hitbox.y = dy;
+        hitbox.w = dw;
+        hitbox.h = dh;
+      }
+    }
+
+    function drawBarMaiden() {
+      // Full portrait on black — use whole image (black keyed)
+      let sprite = null;
+      if (barMaidenArt.complete && barMaidenArt.naturalWidth) {
+        // Crop center figure (sheet is wide with empty sides)
+        const iw = barMaidenArt.naturalWidth;
+        const ih = barMaidenArt.naturalHeight;
+        const sw = Math.floor(iw * 0.42);
+        const sh = Math.floor(ih * 0.95);
+        const sx = Math.floor((iw - sw) / 2);
+        const sy = Math.floor(ih * 0.02);
+        sprite = getKeyedSprite('bar_maiden', barMaidenArt, sx, sy, sw, sh);
+        if (!sprite) {
+          // Unkeyed fallback: still draw crop
+          const c = document.createElement('canvas');
+          c.width = sw; c.height = sh;
+          c.getContext('2d').drawImage(barMaidenArt, sx, sy, sw, sh, 0, 0, sw, sh);
+          sprite = c;
+          npcSpriteCache['bar_maiden'] = c;
+        }
+      }
+      drawNpcSprite(sprite, barMaidenPos.feetX, barMaidenPos.feetY, 'Bar Maiden', '#e8c94a', barMaidenHitbox);
+    }
+
+    // Rogue sheet is 2×2 poses (1408×768). Cell 0 = L3, cell 1 = L4.
+    function drawGarageRogue(cellIndex, feetX, feetY, label, hitbox) {
+      let sprite = null;
+      if (rogueSheetArt.complete && rogueSheetArt.naturalWidth) {
+        const iw = rogueSheetArt.naturalWidth;
+        const ih = rogueSheetArt.naturalHeight;
+        const cols = 2, rows = 2;
+        const cw = Math.floor(iw / cols);
+        const ch = Math.floor(ih / rows);
+        const col = cellIndex % cols;
+        const row = Math.floor(cellIndex / cols);
+        // Inset a little so gold frames/text are less likely
+        const insetX = Math.floor(cw * 0.08);
+        const insetY = Math.floor(ch * 0.06);
+        const sx = col * cw + insetX;
+        const sy = row * ch + insetY;
+        const sw = cw - insetX * 2;
+        const sh = ch - insetY * 2;
+        const key = 'rogue_' + cellIndex;
+        sprite = getKeyedSprite(key, rogueSheetArt, sx, sy, sw, sh);
+        if (!sprite) {
+          const c = document.createElement('canvas');
+          c.width = sw; c.height = sh;
+          c.getContext('2d').drawImage(rogueSheetArt, sx, sy, sw, sh, 0, 0, sw, sh);
+          sprite = c;
+          npcSpriteCache[key] = c;
+        }
+      }
+      drawNpcSprite(sprite, feetX, feetY, label, '#c0a0e0', hitbox);
     }
 
     // Draw merchant at roughly Ani's on-screen size
@@ -2787,6 +4153,51 @@
       }
     }
 
+    // Crop chainmail (left) or potion (right) from the shared shop sheet
+    function getShopSheetThumb(which) {
+      const key = 'shop_' + which;
+      if (npcSpriteCache[key]) return npcSpriteCache[key];
+      if (!shopItemsSheet.complete || !shopItemsSheet.naturalWidth) return null;
+      const iw = shopItemsSheet.naturalWidth;
+      const ih = shopItemsSheet.naturalHeight;
+      let sx, sy, sw, sh;
+      if (which === 'chainmail') {
+        sx = Math.floor(iw * 0.04);
+        sy = Math.floor(ih * 0.04);
+        sw = Math.floor(iw * 0.42);
+        sh = Math.floor(ih * 0.55);
+      } else {
+        // potion bottle (right half)
+        sx = Math.floor(iw * 0.52);
+        sy = Math.floor(ih * 0.08);
+        sw = Math.floor(iw * 0.30);
+        sh = Math.floor(ih * 0.65);
+      }
+      const c = getKeyedSprite(key, shopItemsSheet, sx, sy, sw, sh);
+      if (c) return c;
+      // unkeyed fallback
+      try {
+        const off = document.createElement('canvas');
+        off.width = sw; off.height = sh;
+        off.getContext('2d').drawImage(shopItemsSheet, sx, sy, sw, sh, 0, 0, sw, sh);
+        npcSpriteCache[key] = off;
+        return off;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function drawShopSheetThumb(which, x, y, w, h) {
+      ctx.fillStyle = '#0a0a0e';
+      ctx.fillRect(x, y, w, h);
+      const sprite = getShopSheetThumb(which);
+      if (sprite) {
+        const sc = Math.min((w - 8) / sprite.width, (h - 8) / sprite.height);
+        const sw = sprite.width * sc, sh = sprite.height * sc;
+        ctx.drawImage(sprite, x + (w - sw) / 2, y + (h - sh) / 2, sw, sh);
+      }
+    }
+
     function drawWeaponShopMenu() {
       // Dim overlay
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -2806,8 +4217,8 @@
       ctx.fillText('ARCANE ARMORY — SHOP', 320, 95);
 
       const items = [
-        { id: 'fox_sword', name: 'Fox Blade', price: 20, art: swordFoxArt },
-        { id: 'neko_claws', name: 'Neko Claws', price: 20, art: nekoClawsArt }
+        { id: 'fox_sword', name: 'Fox Katana', price: 20, art: swordFoxArt, bonus: '+2 ATK (Ani)' },
+        { id: 'neko_claws', name: 'Neko Claws', price: 20, art: nekoClawsArt, bonus: '+2 ATK (Neko)' }
       ];
 
       for (let i = 0; i < items.length; i++) {
@@ -2824,15 +4235,18 @@
         ctx.fillStyle = '#eee';
         ctx.font = 'bold 16px Courier New';
         ctx.textAlign = 'left';
-        ctx.fillText(items[i].name, 220, rowY + 30);
+        ctx.fillText(items[i].name, 220, rowY + 26);
         ctx.fillStyle = '#e8c94a';
-        ctx.font = 'bold 16px Courier New';
-        ctx.fillText(items[i].price + ' gold', 220, rowY + 55);
+        ctx.font = 'bold 14px Courier New';
+        ctx.fillText(items[i].price + ' gold', 220, rowY + 48);
+        ctx.fillStyle = '#9cf';
+        ctx.font = '11px Courier New';
+        ctx.fillText(items[i].bonus, 320, rowY + 48);
 
         if (inventory.indexOf(items[i].id) >= 0) {
           ctx.fillStyle = '#7dffb0';
           ctx.font = '12px Courier New';
-          ctx.fillText('(owned)', 340, rowY + 55);
+          ctx.fillText('(owned)', 400, rowY + 26);
         }
       }
 
@@ -2870,11 +4284,10 @@
     }
 
     function drawClothingShopMenu() {
-      // Empty shop menu (placeholder for outfits later)
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const px = 70, py = 80, pw = 500, ph = 280;
+      const px = 70, py = 70, pw = 500, ph = 300;
       ctx.fillStyle = '#1e1e24';
       ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = '#e8a0d0';
@@ -2884,30 +4297,137 @@
       ctx.fillStyle = '#e8a0d0';
       ctx.font = 'bold 20px Courier New';
       ctx.textAlign = 'center';
-      ctx.fillText('ARCANE ATTIRE — SHOP', 320, 120);
+      ctx.fillText('ARCANE ATTIRE — SHOP', 320, 105);
 
-      ctx.fillStyle = '#2a2a32';
-      ctx.fillRect(110, 150, 420, 120);
-      ctx.strokeStyle = '#5a4a55';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(110, 150, 420, 120);
+      const selected = shopSelected === 0;
+      ctx.fillStyle = selected ? '#3a2a38' : '#2a2a32';
+      ctx.fillRect(95, 140, 450, 90);
+      ctx.strokeStyle = selected ? '#e8a0d0' : '#5a4a55';
+      ctx.lineWidth = selected ? 2 : 1;
+      ctx.strokeRect(95, 140, 450, 90);
 
-      ctx.fillStyle = '#aaa';
-      ctx.font = '15px Courier New';
-      ctx.fillText('No outfits in stock yet.', 320, 200);
-      ctx.font = '13px Courier New';
-      ctx.fillStyle = '#888';
-      ctx.fillText('Check back after the next delivery.', 320, 230);
+      drawShopSheetThumb('chainmail', 105, 150, 90, 70);
 
-      // Close button
+      ctx.fillStyle = '#eee';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('Chainmail Top', 210, 170);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillText('25 gold', 210, 195);
+      ctx.fillStyle = '#9cf';
+      ctx.font = '12px Courier New';
+      ctx.fillText('+2 DEF (party)', 300, 195);
+
+      if (inventory.indexOf('chainmail') >= 0) {
+        ctx.fillStyle = '#7dffb0';
+        ctx.font = '12px Courier New';
+        ctx.fillText('(owned)', 420, 170);
+      }
+
+      // Buy
+      ctx.fillStyle = '#2a5a3a';
+      ctx.fillRect(360, 300, 80, 40);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(360, 300, 80, 40);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('BUY', 400, 326);
+
+      // Close
       ctx.fillStyle = '#5a2a2a';
       ctx.fillRect(460, 300, 90, 40);
       ctx.strokeStyle = '#e88';
-      ctx.lineWidth = 2;
       ctx.strokeRect(460, 300, 90, 40);
       ctx.fillStyle = '#faa';
-      ctx.font = 'bold 16px Courier New';
       ctx.fillText('CLOSE', 505, 326);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('Your gold: ' + playerGold, 100, 325);
+
+      if (shopToast && shopToastTimer > 0) {
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(shopToast, 320, 355);
+      }
+      ctx.textAlign = 'left';
+    }
+
+    function drawBarShopMenu() {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const px = 70, py = 70, pw = 500, ph = 300;
+      ctx.fillStyle = '#1e1e24';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#e8c94a';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(px, py, pw, ph);
+
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 20px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('THE ELDRITCH TAP — DRINKS', 320, 105);
+
+      const selected = shopSelected === 0;
+      ctx.fillStyle = selected ? '#3a3a28' : '#2a2a32';
+      ctx.fillRect(95, 140, 450, 90);
+      ctx.strokeStyle = selected ? '#e8c94a' : '#5a5a45';
+      ctx.lineWidth = selected ? 2 : 1;
+      ctx.strokeRect(95, 140, 450, 90);
+
+      drawShopSheetThumb('potion', 105, 150, 90, 70);
+
+      ctx.fillStyle = '#eee';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('Health Potion', 210, 170);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillText('12 gold', 210, 195);
+      ctx.fillStyle = '#9f8';
+      ctx.font = '12px Courier New';
+      ctx.fillText('+25 HP when used  (stackable)', 300, 195);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '12px Courier New';
+      ctx.fillText('Owned: x' + inventoryCount('potion'), 210, 218);
+
+      // Buy
+      ctx.fillStyle = '#2a5a3a';
+      ctx.fillRect(360, 300, 80, 40);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(360, 300, 80, 40);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('BUY', 400, 326);
+
+      // Close
+      ctx.fillStyle = '#5a2a2a';
+      ctx.fillRect(460, 300, 90, 40);
+      ctx.strokeStyle = '#e88';
+      ctx.strokeRect(460, 300, 90, 40);
+      ctx.fillStyle = '#faa';
+      ctx.fillText('CLOSE', 505, 326);
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('Your gold: ' + playerGold, 100, 325);
+
+      if (shopToast && shopToastTimer > 0) {
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(shopToast, 320, 355);
+      }
       ctx.textAlign = 'left';
     }
 
@@ -2925,8 +4445,11 @@
 
       let hudY = 40;
       const owned = [];
-      if (inventory.indexOf('fox_sword') >= 0) owned.push('Fox Blade');
-      if (inventory.indexOf('neko_claws') >= 0) owned.push('Neko Claws');
+      if (inventory.indexOf('fox_sword') >= 0) owned.push('Katana +2');
+      if (inventory.indexOf('neko_claws') >= 0) owned.push('Claws +2');
+      if (inventory.indexOf('chainmail') >= 0) owned.push('Mail +2 DEF');
+      const pots = inventoryCount('potion');
+      if (pots > 0) owned.push('Potion x' + pots);
       for (let i = 0; i < owned.length; i++) {
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         ctx.fillRect(canvas.width - 120, hudY, 110, 20);
@@ -2936,6 +4459,107 @@
         ctx.fillText(owned[i], canvas.width - 18, hudY + 14);
         ctx.textAlign = 'left';
         hudY += 22;
+      }
+
+      // NPC / shop toast (works outside shop menus)
+      if (shopToast && shopToastTimer > 0) {
+        ctx.font = 'bold 12px Courier New';
+        const tw = Math.min(canvas.width - 40, ctx.measureText(shopToast).width + 24);
+        const tx = (canvas.width - tw) / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(tx, 48, tw, 28);
+        ctx.strokeStyle = 'rgba(232,201,74,0.7)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx, 48, tw, 28);
+        ctx.fillStyle = '#e8c94a';
+        ctx.textAlign = 'center';
+        ctx.fillText(shopToast, canvas.width / 2, 67);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    // Small always-visible STATS chip; full panel during combat or when toggled
+    function drawPartyStatsHud() {
+      // Clickable chip
+      ctx.fillStyle = statsMenuOpen || combat.active ? 'rgba(40,60,40,0.9)' : 'rgba(0,0,0,0.62)';
+      ctx.fillRect(8, 8, 70, 24);
+      ctx.strokeStyle = '#7dffb0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(8, 8, 70, 24);
+      ctx.fillStyle = '#7dffb0';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('STATS', 43, 24);
+      ctx.textAlign = 'left';
+
+      // Compact level line always near chip
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(82, 8, 120, 24);
+      ctx.fillStyle = '#e8c94a';
+      ctx.font = '11px Courier New';
+      ctx.fillText('Lv' + partyProgress.level + '  ' + partyProgress.xp + '/' + partyProgress.xpToNext, 88, 24);
+
+      // Full ATK/DEF/HP during combat always, or when menu open
+      if (!combat.active && !statsMenuOpen) return;
+
+      const panelW = 168;
+      const panelH = 92;
+      const baseY = 38;
+      const entries = [
+        { key: 'ani', color: '#ff9a4a', y: baseY },
+        { key: 'neko', color: '#c9a0ff', y: baseY + panelH + 6 }
+      ];
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const st = partyStats[e.key];
+        const x = 8;
+        const y = e.y;
+        ctx.fillStyle = 'rgba(0,0,0,0.72)';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, panelW, panelH);
+
+        ctx.fillStyle = e.color;
+        ctx.font = 'bold 12px Courier New';
+        ctx.fillText(st.name, x + 8, y + 16);
+
+        const hpPct = st.maxHp > 0 ? st.hp / st.maxHp : 0;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x + 8, y + 24, panelW - 16, 12);
+        ctx.fillStyle = hpPct > 0.35 ? '#4c8' : '#e44';
+        ctx.fillRect(x + 8, y + 24, (panelW - 16) * hpPct, 12);
+        ctx.strokeStyle = '#888';
+        ctx.strokeRect(x + 8, y + 24, panelW - 16, 12);
+        ctx.fillStyle = '#eee';
+        ctx.font = '10px Courier New';
+        ctx.fillText('HP ' + st.hp + '/' + st.maxHp, x + 10, y + 34);
+
+        const atk = getEffectiveAtk(e.key);
+        const def = getEffectiveDef(e.key);
+        ctx.fillStyle = '#e8c94a';
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillText('ATK ' + atk, x + 8, y + 54);
+        ctx.fillStyle = '#7ab0ff';
+        ctx.fillText('DEF ' + def, x + 80, y + 54);
+
+        const maxStat = 20;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x + 8, y + 62, 70, 8);
+        ctx.fillStyle = '#e8c94a';
+        ctx.fillRect(x + 8, y + 62, 70 * Math.min(1, atk / maxStat), 8);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x + 88, y + 62, 70, 8);
+        ctx.fillStyle = '#7ab0ff';
+        ctx.fillRect(x + 88, y + 62, 70 * Math.min(1, def / maxStat), 8);
+
+        if (st.hp <= 0) {
+          ctx.fillStyle = 'rgba(180,40,40,0.85)';
+          ctx.fillRect(x + panelW - 40, y + 4, 34, 16);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Courier New';
+          ctx.fillText('KO', x + panelW - 30, y + 15);
+        }
       }
     }
 
@@ -3023,6 +4647,9 @@
         drawBottleShelf(W - 250, H * 0.18, 180);
       }
 
+      // Cow-girl bar maiden (clickable)
+      drawBarMaiden();
+
       // Exit pad bottom-left
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(15, 360, 90, 90);
@@ -3038,6 +4665,9 @@
     }
 
     function draw() {
+      // Clear each frame so a failed mid-draw never leaves a ghost/blank state
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       if (currentRoom === 'room') drawRoom();
       else if (currentRoom === 'hallway') drawHallway();
       else if (currentRoom === 'kitchen') drawKitchen();
@@ -3045,6 +4675,7 @@
       else if (currentRoom === 'garageStreet') drawGarageStreet();
       else if (currentRoom === 'warehouse') drawWarehouse();
       else if (currentRoom === 'warehouseBattle') drawWarehouseBattle();
+      else if (currentRoom === 'forestBattle') drawForestBattleScene();
       else if (currentRoom === 'parkingGarage') drawParkingGarageInterior();
       else if (currentRoom === 'stairwell') drawStairwellInterior();
       else if (currentRoom === 'parkingGarageLevel2') drawParkingGarageLevel2();
@@ -3052,22 +4683,49 @@
       else if (currentRoom === 'parkingGarageLevel4') drawParkingGarageLevel4();
       else if (currentRoom === 'garageTopFloor') drawGarageTopFloor();
       else if (currentRoom === 'forestEntrance') drawForestEntrance();
-      else if (currentRoom === 'forestPath1') drawForestPath(0);
-      else if (currentRoom === 'forestPath2') drawForestPath(1);
-      else if (currentRoom === 'forestPath3') drawForestPath(2);
-      else if (currentRoom === 'forestPath4') drawForestPath(3);
-      else if (currentRoom === 'forestPath5') drawForestPath(4);
+      else if (currentRoom === 'forestPath1') drawMossTrailCabin();
+      else if (currentRoom === 'cabinInterior') drawCabinInteriorScene();
+      else if (currentRoom === 'forestPath2') drawOpenGrassland();
+      else if (currentRoom === 'roadFork') drawRoadForkScene();
+      else if (currentRoom === 'forestCamp') drawForestCampScene();
+      else if (currentRoom === 'banditFort') drawBanditFortScene();
+      else if (currentRoom === 'forestPath3') drawAncientGroveCabin();
+      else if (currentRoom === 'forestPath4') drawMushroomHollow();
+      else if (currentRoom === 'mushroomPond') drawMushroomPondScene();
+      else if (currentRoom === 'forestPath5') drawDeepThicketScene();
+      else if (currentRoom === 'forestCave') drawForestCaveScene();
       else if (currentRoom === 'dreamcore') drawDreamcore();
       else if (currentRoom === 'weaponStore') drawWeaponStoreInterior();
       else if (currentRoom === 'clothingStore') drawClothingStoreInterior();
       else if (currentRoom === 'bar') drawBarInterior();
 
-      // Draw fighters — combat sheets in warehouse battle, walk sheets elsewhere
-      if (currentRoom === 'warehouseBattle' && combat.active) {
-        // Pin feet just above the combat speech bar (panel starts at y=370)
-        const combatFeetY = 368;
-        drawCombatFighter('ani', 200, combatFeetY);
-        drawCombatFighter('neko', 95, combatFeetY);
+      // Draw fighters — combat sheets in battle, walk sheets elsewhere
+      const inCombatDraw = combat.active && (
+        currentRoom === 'warehouseBattle' ||
+        currentRoom === 'forestBattle' ||
+        combat.mode === 'forest'
+      );
+      if (inCombatDraw) {
+        if (combat.mode === 'forest' && combat.partyFeet) {
+          // Even layout on grass arena
+          if (partyStats.ani.hp > 0) {
+            drawCombatFighter('ani', combat.partyFeet.ani.x, combat.partyFeet.ani.y);
+          }
+          if (partyStats.neko.hp > 0) {
+            drawCombatFighter('neko', combat.partyFeet.neko.x, combat.partyFeet.neko.y);
+          }
+          drawForestEnemies();
+          drawCombatMenu();
+        } else {
+          // Warehouse training lineup
+          const combatFeetY = 368;
+          if (partyStats.ani.hp > 0 || combat.mode === 'training') {
+            drawCombatFighter('ani', 175, combatFeetY);
+          }
+          if (partyStats.neko.hp > 0 || combat.mode === 'training') {
+            drawCombatFighter('neko', 70, combatFeetY);
+          }
+        }
       } else {
         // Draw Ani
         const drawW = frameW * ani.scale, drawH = frameH * ani.scale;
@@ -3100,8 +4758,9 @@
         drawNekoShortHair(nFeetX, nFeetY, neko.frame, 1);
       }
 
-      // Gold / inventory HUD
+      // Gold / inventory / stats HUD
       drawGoldHud();
+      drawPartyStatsHud();
 
       // Draw menu on top if open
       if (activeMenu === 'map') {
@@ -3110,6 +4769,8 @@
         drawWeaponShopMenu();
       } else if (activeMenu === 'clothingShop') {
         drawClothingShopMenu();
+      } else if (activeMenu === 'barShop') {
+        drawBarShopMenu();
       }
     }
 
